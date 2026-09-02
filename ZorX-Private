@@ -2624,7 +2624,7 @@ Tab:AddButton("Server Hop + Auto Kill", function()
     loadstring(game:HttpGet("https://raw.githubusercontent.com/IVRzHxZ/Farming-Auto-KIll-in-xKyo/refs/heads/main/farmkillsxkyo"))()
 end)
 
-Tab:AddSwitch("Loop TP Auto Kill All", function(Value)
+Tab:AddSwitch("Auto Kill All", function(Value)
     LoopKillAllActive = Value
     if Value then
         task.spawn(function()
