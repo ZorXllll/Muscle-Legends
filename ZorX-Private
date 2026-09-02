@@ -1,0 +1,5078 @@
+-- CARGA DE LIBRERÍA
+local library = loadstring(game:HttpGet("https://raw.githubusercontent.com/IVRzHxZ/Kyo-UI-Library-llll/refs/heads/main/Kyo-Private"))()
+
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+
+-- Dynamically generate the window title with a welcome message
+local windowTitle = "ZorX~Private | | | Good Afternoon " .. LocalPlayer.DisplayName
+
+local window = library:AddWindow(windowTitle, {
+    main_color = Color3.fromRGB(0, 0, 0),
+    min_size = Vector2.new(550, 500),
+    can_resize = false
+})
+
+local AutoFarm = window:AddTab("Farm")
+AutoFarm:Show()
+
+local Players = game:GetService("Players")
+local VirtualUser = game:GetService("VirtualUser")
+local CoreGui = game:GetService("CoreGui")
+local RunService = game:GetService("RunService")
+
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+local AntiAFKConnection = nil
+local AFKTimerThread = nil
+local RainbowThread = nil
+
+-- 1. Create Standalone ScreenGui Overlay
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "Elerium_AFKOverlay"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+-- Protect GUI from detection if supported by executor
+pcall(function()
+    if syn and syn.protect_gui then
+        syn.protect_gui(ScreenGui)
+    elseif gethui then
+        ScreenGui.Parent = gethui()
+    end
+end)
+
+if not ScreenGui.Parent then
+    ScreenGui.Parent = CoreGui
+end
+
+-- 2. Build the Timer Frame Layout (Fixed Position & Fully Transparent)
+local MainFrame = Instance.new("Frame")
+MainFrame.Name = "MainFrame"
+MainFrame.Size = UDim2.new(0, 500, 0, 80)
+MainFrame.Position = UDim2.new(0.5, -250, 0.00, 0)
+MainFrame.BackgroundTransparency = 1
+MainFrame.BorderSizePixel = 0
+MainFrame.Active = false 
+MainFrame.Draggable = false 
+MainFrame.Visible = false 
+MainFrame.Parent = ScreenGui
+
+-- Rainbow Text Label (ANTI AFK Text)
+local TextLabel = Instance.new("TextLabel")
+TextLabel.Size = UDim2.new(1, 0, 1, 0)
+TextLabel.BackgroundTransparency = 1
+TextLabel.Text = "ANTI AFK: 00:00:00"
+TextLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+TextLabel.Font = Enum.Font.GothamBold
+TextLabel.TextSize = 25 
+TextLabel.TextXAlignment = Enum.TextXAlignment.Center
+TextLabel.TextYAlignment = Enum.TextYAlignment.Center
+TextLabel.Parent = MainFrame
+
+-- 3. Add to your Elerium Tab
+local AntiAFKSwitch = AutoFarm:AddSwitch("Anti-AFK ☕", function(bool)
+    if bool then
+        -- Make the ScreenGui container visible
+        MainFrame.Visible = true
+        
+        -- Start Anti-AFK connection
+        if not AntiAFKConnection then
+            AntiAFKConnection = player.Idled:Connect(function()
+                VirtualUser:CaptureController()
+                VirtualUser:ClickButton2(Vector2.new())
+            end)
+        end
+        
+        -- Start clock thread
+        if not AFKTimerThread then
+            AFKTimerThread = task.spawn(function()
+                local startTime = os.time()
+                while true do
+                    local elapsed = os.time() - startTime
+                    local hours = math.floor(elapsed / 3600)
+                    local minutes = math.floor((elapsed % 3600) / 60)
+                    local seconds = elapsed % 60
+                    
+                    TextLabel.Text = string.format("ANTI AFK: %02d:%02d:%02d", hours, minutes, seconds)
+                    task.wait(1)
+                end
+            end)
+        end
+
+        -- Start Rainbow Text dynamic loop thread
+        if not RainbowThread then
+            RainbowThread = task.spawn(function()
+                local hue = 0
+                while true do
+                    TextLabel.TextColor3 = Color3.fromHSV(hue, 1, 1)
+                    hue = hue + 0.01
+                    if hue >= 1 then
+                        hue = 0
+                    end
+                    task.wait(0.03)
+                end
+            end)
+        end
+    else
+        -- Hide the ScreenGui container completely
+        MainFrame.Visible = false
+        
+        -- Stop everything safely
+        if AntiAFKConnection then
+            AntiAFKConnection:Disconnect()
+            AntiAFKConnection = nil
+        end
+        
+        if AFKTimerThread then
+            task.cancel(AFKTimerThread)
+            AFKTimerThread = nil
+        end
+
+        if RainbowThread then
+            task.cancel(RainbowThread)
+            RainbowThread = nil
+        end
+    end
+end)
+
+-- Visually toggle Elerium switch checkmark to ON immediately upon loading script
+AntiAFKSwitch:Set(true)
+
+-- Global state for Popups
+local _G = getgenv and getgenv() or _G
+_G.HideGainedPopups = false
+local originalStates = {}
+
+-- Checks if the UI element is any type of standard visual Frame container
+local function isFrameUi(element)
+    return element:IsA("Frame") or element:IsA("ScrollingFrame") or element:IsA("CanvasGroup")
+end
+
+local function hideElement(element)
+    if not isFrameUi(element) then return end
+    
+    -- Save original properties before modifying them
+    if not originalStates[element] then
+        originalStates[element] = {
+            Visible = element.Visible,
+            Position = element.Position
+        }
+    end
+    
+    element.Visible = false
+    element.Position = UDim2.new(5, 0, 5, 0) -- Teleport far off-screen
+end
+
+local function restoreElements()
+    for element, state in pairs(originalStates) do
+        if element and element.Parent then
+            element.Visible = state.Visible
+            element.Position = state.Position
+        end
+    end
+    table.clear(originalStates)
+end
+
+-- Listen for any new frames being added dynamically while the switch is ON
+playerGui.DescendantAdded:Connect(function(descendant)
+    if _G.HideGainedPopups then
+        task.wait(0.05)
+        if _G.HideGainedPopups then
+            hideElement(descendant)
+        end
+    end
+end)
+
+-- Hooked directly into your Elerium v2 switch
+AutoFarm:AddSwitch("Hide All UI Frames", function(state)
+    _G.HideGainedPopups = state
+    if state then
+        for _, desc in ipairs(playerGui:GetDescendants()) do
+            hideElement(desc)
+        end
+    else
+        restoreElements()
+    end
+end)
+
+-- 🚀 Anti Lag
+AutoFarm:AddButton("Anti Lag", function()
+    for _, v in pairs(game:GetDescendants()) do
+        if v:IsA("ParticleEmitter") or v:IsA("Smoke") or v:IsA("Fire") or v:IsA("Sparkles") then
+            v.Enabled = false
+        end
+    end
+
+    local lighting = game:GetService("Lighting")
+    lighting.GlobalShadows = false
+    lighting.FogEnd = 9e9
+    lighting.Brightness = 0
+
+    settings().Rendering.QualityLevel = 1
+
+    for _, v in pairs(game:GetDescendants()) do
+        if v:IsA("Decal") or v:IsA("Texture") then
+            v.Transparency = 1
+        elseif v:IsA("BasePart") and not v:IsA("MeshPart") then
+            v.Material = Enum.Material.SmoothPlastic
+            if v.Parent and (v.Parent:FindFirstChild("Humanoid") or v.Parent.Parent:FindFirstChild("Humanoid")) then
+            else
+                v.Reflectance = 0
+            end
+        end
+    end
+
+    for _, v in pairs(lighting:GetChildren()) do
+        if v:IsA("BlurEffect") or v:IsA("SunRaysEffect") or v:IsA("ColorCorrectionEffect") or v:IsA("BloomEffect") or v:IsA("DepthOfFieldEffect") then
+            v.Enabled = false
+        end
+    end
+end)
+
+AutoFarm:AddTextBox('Enter Rep Speed', function(p273)
+			local v274 = tonumber(p273)
+			if v274 and 0 < v274 then
+				getgenv().ThreadCount = v274
+				print('Thread count set to:', v274)
+			else
+				warn('Invalid number of threads entered.')
+			end
+		end)
+		AutoFarm:AddSwitch('Start Gaining Strength', function(p275)
+			getgenv().isGrinding = p275
+			if p275 then
+				for _ = 1, getgenv().ThreadCount do
+					task.spawn(function()
+						while getgenv().isGrinding do
+							local v276, v277 = pcall(function()
+								game:GetService('Players').LocalPlayer.muscleEvent:FireServer('rep')
+							end)
+							if not v276 then
+								warn('Failed to fire rep:', v277)
+							end
+							task.wait(0.01)
+						end
+					end)
+				end
+			end
+		end)
+
+local u377 = false
+
+local function u382()
+    pcall(function()
+        local player = game.Players.LocalPlayer
+        local character = player.Character or player.CharacterAdded:Wait()
+        local backpack = player:FindFirstChild('Backpack')
+        
+        local proteinEgg = (character and character:FindFirstChild('Protein Egg')) or (backpack and backpack:FindFirstChild('Protein Egg'))
+        
+        if proteinEgg then
+            local args = {
+                [1] = "proteinEgg",
+                [2] = proteinEgg
+            }
+            player.muscleEvent:FireServer(unpack(args))
+        end
+    end)
+end
+
+task.spawn(function()
+    while true do
+        if u377 then
+            u382()
+            
+            local elapsed = 0
+            while elapsed < 1800 and u377 do
+                task.wait(1)
+                elapsed = elapsed + 1
+            end
+        else
+            task.wait(1)
+        end
+    end
+end)
+
+AutoFarm:AddSwitch("Auto Egg (30 Min)", function(p383)
+    u377 = p383
+end)
+
+local u377 = false
+
+local function u382()
+    pcall(function()
+        local player = game.Players.LocalPlayer
+        local character = player.Character or player.CharacterAdded:Wait()
+        local backpack = player:FindFirstChild('Backpack')
+        
+        local proteinEgg = (character and character:FindFirstChild('Protein Egg')) or (backpack and backpack:FindFirstChild('Protein Egg'))
+        
+        if proteinEgg then
+            local args = {
+                [1] = "proteinEgg",
+                [2] = proteinEgg
+            }
+            player.muscleEvent:FireServer(unpack(args))
+        end
+    end)
+end
+
+task.spawn(function()
+    while true do
+        if u377 then
+            u382() -- Kakain agad pagka-on
+            
+            -- Maghihintay ng 60 mins (3600 seconds) habang naka-check kung naka-on pa
+            local elapsed = 0
+            while elapsed < 3600 and u377 do
+                task.wait(1)
+                elapsed = elapsed + 1
+            end
+        else
+            task.wait(1)
+        end
+    end
+end)
+
+AutoFarm:AddSwitch("Auto Egg (60 Min)", function(p383)
+    u377 = p383
+end)
+
+local autoEquipToolsFolder = AutoFarm:AddFolder("Auto Tools")
+
+-- ✅ Configuración optimizada
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
+local Stats = game:GetService("Stats")
+local LocalPlayer = Players.LocalPlayer
+
+local PET_NAME = "Swift Samurai"
+local ROCK_NAME = "Rock5M"
+local PROTEIN_EGG_NAME = "ProteinEgg"
+local PROTEIN_EGG_INTERVAL = 30 * 60 -- 30 min
+local REPS_PER_CYCLE = 60
+local REP_DELAY = 0.01
+local ROCK_INTERVAL = 3
+local MAX_PING = 500
+
+local HumanoidRootPart
+local lastProteinEggTime = 0
+local lastRockTime = 0
+local RockRef = workspace:FindFirstChild(ROCK_NAME)
+
+local function getPing()
+    local success, ping = pcall(function()
+        return Stats.Network.ServerStatsItem["Data Ping"]:GetValue()
+    end)
+    return success and ping or 999
+end
+
+local function updateCharacterRefs()
+    local character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+    HumanoidRootPart = character:WaitForChild("HumanoidRootPart", 5)
+end
+
+local function equipPet()
+    local petsFolder = LocalPlayer:FindFirstChild("petsFolder")
+    if petsFolder and petsFolder:FindFirstChild("Unique") then
+        for _, pet in pairs(petsFolder.Unique:GetChildren()) do
+            if pet.Name == PET_NAME then
+                ReplicatedStorage.rEvents.equipPetEvent:FireServer("equipPet", pet)
+                break
+            end
+        end
+    end
+end
+
+local function eatProteinEgg()
+    if LocalPlayer:FindFirstChild("Backpack") then
+        for _, item in pairs(LocalPlayer.Backpack:GetChildren()) do
+            if item.Name == PROTEIN_EGG_NAME then
+                ReplicatedStorage.rEvents.eatEvent:FireServer("eat", item)
+                break
+            end
+        end
+    end
+end
+
+local function hitRock()
+    if not RockRef or not RockRef.Parent then
+        RockRef = workspace:FindFirstChild(ROCK_NAME)
+    end
+    if RockRef and HumanoidRootPart then
+        HumanoidRootPart.CFrame = RockRef.CFrame * CFrame.new(0, 0, -5)
+        ReplicatedStorage.rEvents.hitEvent:FireServer("hit", RockRef)
+    end
+end
+
+-- ✅ Loop principal
+if not getgenv()._AutoRepFarmLoop then
+    getgenv()._AutoRepFarmLoop = true
+
+    task.spawn(function()
+        updateCharacterRefs()
+        equipPet()
+        lastProteinEggTime = tick()
+        lastRockTime = tick()
+
+        while true do
+            if getgenv()._AutoRepFarmEnabled then
+                local ping = getPing()
+                if ping > MAX_PING then
+                    warn("[Auto Rep Farm] Ping alto ("..math.floor(ping).."ms), pausando 5s...")
+                    task.wait(5)
+                else
+                    if LocalPlayer:FindFirstChild("muscleEvent") then
+                        for i = 1, REPS_PER_CYCLE do
+                            LocalPlayer.muscleEvent:FireServer("rep")
+                        end
+                    end
+
+                    if tick() - lastProteinEggTime >= PROTEIN_EGG_INTERVAL then
+                        eatProteinEgg()
+                        lastProteinEggTime = tick()
+                    end
+
+                    if tick() - lastRockTime >= ROCK_INTERVAL then
+                        hitRock()
+                        lastRockTime = tick()
+                    end
+
+                    task.wait(REP_DELAY)
+                end
+            else
+                task.wait(1)
+            end
+        end
+    end)
+end
+
+-- Función para crear switches de auto-equip
+local function createAutoToolSwitch(toolName, globalVar)
+    autoEquipToolsFolder:AddSwitch("Auto " .. toolName, function(Value)
+        _G[globalVar] = Value
+        
+        if Value then
+            local tool = LocalPlayer.Backpack:FindFirstChild(toolName)
+            if tool then
+                LocalPlayer.Character.Humanoid:EquipTool(tool)
+            end
+        else
+            local character = LocalPlayer.Character
+            local equipped = character:FindFirstChild(toolName)
+            if equipped then
+                equipped.Parent = LocalPlayer.Backpack
+            end
+        end
+        
+        task.spawn(function()
+            while _G[globalVar] do
+                if not _G[globalVar] then break end
+                LocalPlayer.muscleEvent:FireServer("rep")
+                task.wait(0.1)
+            end
+        end)
+    end)
+end
+
+createAutoToolSwitch("Weight", "AutoWeight")
+createAutoToolSwitch("Pushups", "AutoPushups")
+createAutoToolSwitch("Handstands", "AutoHandstands")
+createAutoToolSwitch("Situps", "AutoSitups")
+
+autoEquipToolsFolder:AddSwitch("Auto Punch", function(Value)
+    _G.fastHitActive = Value
+    
+    if Value then
+        task.spawn(function()
+            while _G.fastHitActive do
+                if not _G.fastHitActive then break end
+                
+                local punch = LocalPlayer.Backpack:FindFirstChild("Punch")
+                if punch then
+                    punch.Parent = LocalPlayer.Character
+                    if punch:FindFirstChild("attackTime") then
+                        punch.attackTime.Value = 0
+                    end
+                end
+                task.wait(0.1)
+            end
+        end)
+        
+        task.spawn(function()
+            while _G.fastHitActive do
+                if not _G.fastHitActive then break end
+                
+                LocalPlayer.muscleEvent:FireServer("punch", "rightHand")
+                LocalPlayer.muscleEvent:FireServer("punch", "leftHand")
+                
+                local character = LocalPlayer.Character
+                if character then
+                    local punchTool = character:FindFirstChild("Punch")
+                    if punchTool then
+                        punchTool:Activate()
+                    end
+                end
+                task.wait()
+            end
+        end)
+    else
+        local character = LocalPlayer.Character
+        local equipped = character:FindFirstChild("Punch")
+        if equipped then
+            equipped.Parent = LocalPlayer.Backpack
+        end
+    end
+end)
+
+autoEquipToolsFolder:AddSwitch("Fast Tools", function(Value)
+    _G.FastTools = Value
+    
+    local toolSettings = {
+        {"Punch", "attackTime", Value and 0 or 0.35},
+        {"Ground Slam", "attackTime", Value and 0 or 6},
+        {"Stomp", "attackTime", Value and 0 or 7},
+        {"Handstands", "repTime", Value and 0 or 1},
+        {"Pushups", "repTime", Value and 0 or 1},
+        {"Weight", "repTime", Value and 0 or 1},
+        {"Situps", "repTime", Value and 0 or 1}
+    }
+    
+    local backpack = LocalPlayer:WaitForChild("Backpack")
+    
+    for _, toolInfo in ipairs(toolSettings) do
+        local tool = backpack:FindFirstChild(toolInfo[1])
+        if tool and tool:FindFirstChild(toolInfo[2]) then
+            tool[toolInfo[2]].Value = toolInfo[3]
+        end
+        
+        local equippedTool = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild(toolInfo[1])
+        if equippedTool and equippedTool:FindFirstChild(toolInfo[2]) then
+            equippedTool[toolInfo[2]].Value = toolInfo[3]
+        end
+    end
+end)
+
+local opfarms = AutoFarm:AddFolder("OP Farming")
+
+         -- Global tracking variables
+local punchConnection = nil
+local isCombinedFarm = false
+
+opfarms:AddSwitch('Fast Farming', function(state)
+    isCombinedFarm = state
+    _G.punchanim = state
+    _G["musclekingautorock"] = state
+    
+    local _LocalPlayer = game.Players.LocalPlayer
+    local _Backpack = _LocalPlayer:FindFirstChild('Backpack')
+    
+    -- Disconnect old runtime processes to cleanly restart the state machine
+    if punchConnection then 
+        punchConnection:Disconnect() 
+        punchConnection = nil 
+    end
+
+    if state then
+        -- 1. INITIALIZE ENVIRONMENT VISUALS (Runs once to optimize render pipelines)
+        pcall(function()
+            local _Rock = game.Workspace.machinesFolder:FindFirstChild('Muscle King Mountain'):FindFirstChild('Rock')
+            if _Rock then
+                _Rock.Size = Vector3.new(12, 12, 12)
+                _Rock.Transparency = 1
+                _Rock.CanCollide = false
+                
+                if _Rock:FindFirstChild('rockGui') then
+                    for _, guiItem in ipairs(_Rock.rockGui:GetChildren()) do
+                        guiItem.Visible = false
+                    end
+                end
+                
+                local particleNames = {'rockEmitter', 'hoopParticle', 'lavaParticle'}
+                for _, name in ipairs(particleNames) do
+                    local effect = _Rock:FindFirstChild(name)
+                    if effect then effect:Destroy() end
+                end
+            end
+        end)
+
+        -- 2. FAST PUNCH RENDERING LOOP (Updates every rendering frame delta)
+        punchConnection = game:GetService('RunService').Heartbeat:Connect(function()
+            local _Character = _LocalPlayer.Character
+            if _Character and _G.punchanim then
+                local _Humanoid = _Character:FindFirstChildOfClass('Humanoid')
+                local _Punch = _Backpack:FindFirstChild('Punch') or _Character:FindFirstChild('Punch')
+                
+                if _Punch then
+                    local _attackTime = _Punch:FindFirstChild('attackTime')
+                    if _attackTime then _attackTime.Value = 0 end
+                    if _Humanoid and _Punch.Parent ~= _Character then 
+                        _Humanoid:EquipTool(_Punch) 
+                    end
+                    _Punch:Activate()
+                end
+            end
+        end)
+
+        -- 3. THE FARMING PROCESSING LOOP
+        task.spawn(function()
+            -- Continuous infinite thread state evaluation
+            while isCombinedFarm do
+                local _Character = _LocalPlayer.Character
+                
+                -- Task 1: Lock Mountain Rock Instance onto Character Geometry
+                local _LeftHand = _Character and _Character:FindFirstChild('LeftHand')
+                local _Rock = game.Workspace.machinesFolder:FindFirstChild('Muscle King Mountain') and game.Workspace.machinesFolder['Muscle King Mountain']:FindFirstChild('Rock')
+                if _Rock and _LeftHand then
+                    _Rock.CFrame = _LeftHand.CFrame
+                end
+                
+                -- Task 2: Maintain Pushup Tool Assembly State Hierarchy 
+                local _Pushups = _Backpack and _Backpack:FindFirstChild('Pushups')
+                if _Pushups and _Character and _Character:FindFirstChildOfClass('Humanoid') then
+                    _Character.Humanoid:EquipTool(_Pushups)
+                end
+                
+                -- Task 3: Package Datagram Array and Execute Network Request Upstream
+                if _LocalPlayer:FindFirstChild('muscleEvent') then
+                    _LocalPlayer.muscleEvent:FireServer(unpack({'rep'}))
+                end
+                
+                -- Task Yield: Safely hands threading priority back to engine memory pipeline
+                task.wait(0.01)
+            end
+        end)
+
+    else
+        -- 4. CLEAN RESET EXECUTABLE STACK (When state evaluation defaults to false)
+        
+        -- Restore tool properties to original profile boundaries
+        local _Punch = _Backpack:FindFirstChild('Punch') or (_LocalPlayer.Character and _LocalPlayer.Character:FindFirstChild('Punch'))
+        if _Punch and _Punch:FindFirstChild('attackTime') then 
+            _Punch.attackTime.Value = 0.35 
+        end
+        
+        -- Safely re-parent isolated tool models back to local collection inventory
+        if _LocalPlayer.Character then
+            local _Tool = _LocalPlayer.Character:FindFirstChildOfClass('Tool')
+            if _Tool and _Tool.Name == 'Pushups' then
+                _Tool.Parent = _Backpack
+            end
+        end
+        
+        -- Revert physical game workspace models back to client map positions
+        pcall(function()
+            local _Rock = game.Workspace.machinesFolder:FindFirstChild('Muscle King Mountain'):FindFirstChild('Rock')
+            if _Rock then
+                if _Rock:FindFirstChild('rockGui') then
+                    for _, guiItem in ipairs(_Rock.rockGui:GetChildren()) do
+                        guiItem.Visible = true
+                    end
+                end
+                _Rock.CanCollide = true
+                _Rock.Transparency = 0
+                _Rock.Size = Vector3.new(141.97381591796875, 123.69998931884766, 149.70497131347656)
+                if _Rock:FindFirstChild('originalPosition') then 
+                    _Rock.CFrame = CFrame.new(_Rock.originalPosition.Value) 
+                end
+            end
+        end)
+    end
+end):Set(false)
+
+-- Global tracking variables
+local punchConnection = nil
+local isCombinedFarm = false
+
+opfarms:AddSwitch('Fast Farming V2', function(state)
+    isCombinedFarm = state
+    _G.punchanim = state
+    _G["musclekingautorock"] = state
+    
+    local _LocalPlayer = game.Players.LocalPlayer
+    local _Backpack = _LocalPlayer:FindFirstChild('Backpack')
+    
+    -- Disconnect old runtime processes to cleanly restart the state machine
+    if punchConnection then 
+        punchConnection:Disconnect() 
+        punchConnection = nil 
+    end
+
+    if state then
+        -- Helper function para hanapin ang tamang rock folder sa machinesFolder
+        local function getTargetRockFolder()
+            local machines = game.Workspace:FindFirstChild('machinesFolder')
+            if not machines then return nil end
+            
+            -- Subukan ang mga posibleng pangalan ng rock sa laro
+            return machines:FindFirstChild('Ancient Jungle Rock') 
+                or machines:FindFirstChild('Industrial Rock') 
+                or machines:FindFirstChild('Jungle Rock')
+        end
+
+        -- 1. INITIALIZE ENVIRONMENT VISUALS
+        pcall(function()
+            local folder = getTargetRockFolder()
+            if folder then
+                local _Rock = folder:FindFirstChild('Rock')
+                if _Rock then
+                    _Rock.Size = Vector3.new(12, 12, 12)
+                    _Rock.Transparency = 1
+                    _Rock.CanCollide = false
+                    
+                    if _Rock:FindFirstChild('rockGui') then
+                        for _, guiItem in ipairs(_Rock.rockGui:GetChildren()) do
+                            guiItem.Visible = false
+                        end
+                    end
+                    
+                    local particleNames = {'rockEmitter', 'hoopParticle', 'lavaParticle'}
+                    for _, name in ipairs(particleNames) do
+                        local effect = _Rock:FindFirstChild(name)
+                        if effect then effect:Destroy() end
+                    end
+                end
+            end
+        end)
+
+        -- 2. FAST PUNCH RENDERING LOOP
+        punchConnection = game:GetService('RunService').Heartbeat:Connect(function()
+            local _Character = _LocalPlayer.Character
+            if _Character and _G.punchanim then
+                local _Humanoid = _Character:FindFirstChildOfClass('Humanoid')
+                local _Punch = _Backpack:FindFirstChild('Punch') or _Character:FindFirstChild('Punch')
+                
+                if _Punch then
+                    local _attackTime = _Punch:FindFirstChild('attackTime')
+                    if _attackTime then _attackTime.Value = 0 end
+                    if _Humanoid and _Punch.Parent ~= _Character then 
+                        _Humanoid:EquipTool(_Punch) 
+                    end
+                    _Punch:Activate()
+                end
+            end
+        end)
+
+        -- 3. THE FARMING PROCESSING LOOP
+        task.spawn(function()
+            while isCombinedFarm do
+                local _Character = _LocalPlayer.Character
+                
+                -- Task 1: Lock Rock Instance onto Character Geometry
+                local _LeftHand = _Character and _Character:FindFirstChild('LeftHand')
+                local folder = getTargetRockFolder()
+                local _Rock = folder and folder:FindFirstChild('Rock')
+                
+                if _Rock and _LeftHand then
+                    _Rock.CFrame = _LeftHand.CFrame
+                end
+                
+                -- Task 2: Maintain Pushup Tool Assembly State Hierarchy 
+                local _Pushups = _Backpack and _Backpack:FindFirstChild('Pushups')
+                if _Pushups and _Character and _Character:FindFirstChildOfClass('Humanoid') then
+                    _Character.Humanoid:EquipTool(_Pushups)
+                end
+                
+                -- Task 3: Package Datagram Array and Execute Network Request Upstream
+                if _LocalPlayer:FindFirstChild('muscleEvent') then
+                    _LocalPlayer.muscleEvent:FireServer(unpack({'rep'}))
+                end
+                
+                task.wait(0.01)
+            end
+        end)
+
+    else
+        -- 4. CLEAN RESET EXECUTABLE STACK
+        local function getTargetRockFolder()
+            local machines = game.Workspace:FindFirstChild('machinesFolder')
+            if not machines then return nil end
+            return machines:FindFirstChild('Ancient Jungle Rock') 
+                or machines:FindFirstChild('Industrial Rock') 
+                or machines:FindFirstChild('Jungle Rock')
+        end
+
+        local _Punch = _Backpack:FindFirstChild('Punch') or (_LocalPlayer.Character and _LocalPlayer.Character:FindFirstChild('Punch'))
+        if _Punch and _Punch:FindFirstChild('attackTime') then 
+            _Punch.attackTime.Value = 0.35 
+        end
+        
+        if _LocalPlayer.Character then
+            local _Tool = _LocalPlayer.Character:FindFirstChildOfClass('Tool')
+            if _Tool and _Tool.Name == 'Pushups' then
+                _Tool.Parent = _Backpack
+            end
+        end
+        
+        pcall(function()
+            local folder = getTargetRockFolder()
+            if folder then
+                local _Rock = folder:FindFirstChild('Rock')
+                if _Rock then
+                    if _Rock:FindFirstChild('rockGui') then
+                        for _, guiItem in ipairs(_Rock.rockGui:GetChildren()) do
+                            guiItem.Visible = true
+                        end
+                    end
+                    _Rock.CanCollide = true
+                    _Rock.Transparency = 0
+                    _Rock.Size = Vector3.new(141.97381591796875, 123.69998931884766, 149.70497131347656)
+                    if _Rock:FindFirstChild('originalPosition') then 
+                        _Rock.CFrame = CFrame.new(_Rock.originalPosition.Value) 
+                    end
+                end
+            end
+        end)
+    end
+end):Set(false)
+
+local folder = AutoFarm:AddFolder("Rock Farming")
+ 
+local function gettool()
+    for i, v in pairs(game.Players.LocalPlayer.Backpack:GetChildren()) do
+        if v.Name == "Punch" and game.Players.LocalPlayer.Character:FindFirstChild("Humanoid") then
+            game.Players.LocalPlayer.Character.Humanoid:EquipTool(v)
+        end
+    end
+    game:GetService("Players").LocalPlayer.muscleEvent:FireServer("punch", "leftHand")
+    game:GetService("Players").LocalPlayer.muscleEvent:FireServer("punch", "rightHand")
+end
+ 
+local tinyIslandRockSwitch = folder:AddSwitch("Farm Tiny Island Rock", function(bool)
+    selectrock = "Tiny Island Rock"
+    getgenv().autoFarm = bool
+ 
+    if bool then
+        spawn(function()
+            while getgenv().autoFarm do
+                task.wait()
+                if game:GetService("Players").LocalPlayer.Durability.Value >= 0 then
+                    for i, v in pairs(game:GetService("Workspace").machinesFolder:GetDescendants()) do
+                        if v.Name == "neededDurability" and v.Value == 0 and 
+                           game.Players.LocalPlayer.Character:FindFirstChild("LeftHand") and 
+                           game.Players.LocalPlayer.Character:FindFirstChild("RightHand") then
+ 
+                            firetouchinterest(v.Parent.Rock, game:GetService("Players").LocalPlayer.Character.RightHand, 0)
+                            firetouchinterest(v.Parent.Rock, game:GetService("Players").LocalPlayer.Character.RightHand, 1)
+                            firetouchinterest(v.Parent.Rock, game:GetService("Players").LocalPlayer.Character.LeftHand, 0)
+                            firetouchinterest(v.Parent.Rock, game:GetService("Players").LocalPlayer.Character.LeftHand, 1)
+                            gettool()
+                        end
+                    end
+                end
+            end
+        end)
+    end
+end)
+ 
+local starterIslandRockSwitch = folder:AddSwitch("Farm Starter Island Rock", function(bool)
+    selectrock = "Starter Island Rock"
+    getgenv().autoFarm = bool
+ 
+    if bool then
+        spawn(function()
+            while getgenv().autoFarm do
+                task.wait()
+                if game:GetService("Players").LocalPlayer.Durability.Value >= 100 then
+                    for i, v in pairs(game:GetService("Workspace").machinesFolder:GetDescendants()) do
+                        if v.Name == "neededDurability" and v.Value == 100 and 
+                           game.Players.LocalPlayer.Character:FindFirstChild("LeftHand") and 
+                           game.Players.LocalPlayer.Character:FindFirstChild("RightHand") then
+ 
+                            firetouchinterest(v.Parent.Rock, game:GetService("Players").LocalPlayer.Character.RightHand, 0)
+                            firetouchinterest(v.Parent.Rock, game:GetService("Players").LocalPlayer.Character.RightHand, 1)
+                            firetouchinterest(v.Parent.Rock, game:GetService("Players").LocalPlayer.Character.LeftHand, 0)
+                            firetouchinterest(v.Parent.Rock, game:GetService("Players").LocalPlayer.Character.LeftHand, 1)
+                            gettool()
+                        end
+                    end
+                end
+            end
+        end)
+    end
+end)
+ 
+local legendBeachRockSwitch = folder:AddSwitch("Farm Legend Beach Rock", function(bool)
+    selectrock = "Legend Beach Rock"
+    getgenv().autoFarm = bool
+ 
+    if bool then
+        spawn(function()
+            while getgenv().autoFarm do
+                task.wait()
+                if game:GetService("Players").LocalPlayer.Durability.Value >= 5000 then
+                    for i, v in pairs(game:GetService("Workspace").machinesFolder:GetDescendants()) do
+                        if v.Name == "neededDurability" and v.Value == 5000 and 
+                           game.Players.LocalPlayer.Character:FindFirstChild("LeftHand") and 
+                           game.Players.LocalPlayer.Character:FindFirstChild("RightHand") then
+ 
+                            firetouchinterest(v.Parent.Rock, game:GetService("Players").LocalPlayer.Character.RightHand, 0)
+                            firetouchinterest(v.Parent.Rock, game:GetService("Players").LocalPlayer.Character.RightHand, 1)
+                            firetouchinterest(v.Parent.Rock, game:GetService("Players").LocalPlayer.Character.LeftHand, 0)
+                            firetouchinterest(v.Parent.Rock, game:GetService("Players").LocalPlayer.Character.LeftHand, 1)
+                            gettool()
+                        end
+                    end
+                end
+            end
+        end)
+    end
+end)
+ 
+local frostGymRockSwitch = folder:AddSwitch("Farm Frost Gym Rock", function(bool)
+    selectrock = "Frost Gym Rock"
+    getgenv().autoFarm = bool
+ 
+    if bool then
+        spawn(function()
+            while getgenv().autoFarm do
+                task.wait()
+                if game:GetService("Players").LocalPlayer.Durability.Value >= 150000 then
+                    for i, v in pairs(game:GetService("Workspace").machinesFolder:GetDescendants()) do
+                        if v.Name == "neededDurability" and v.Value == 150000 and 
+                           game.Players.LocalPlayer.Character:FindFirstChild("LeftHand") and 
+                           game.Players.LocalPlayer.Character:FindFirstChild("RightHand") then
+ 
+                            firetouchinterest(v.Parent.Rock, game:GetService("Players").LocalPlayer.Character.RightHand, 0)
+                            firetouchinterest(v.Parent.Rock, game:GetService("Players").LocalPlayer.Character.RightHand, 1)
+                            firetouchinterest(v.Parent.Rock, game:GetService("Players").LocalPlayer.Character.LeftHand, 0)
+                            firetouchinterest(v.Parent.Rock, game:GetService("Players").LocalPlayer.Character.LeftHand, 1)
+                            gettool()
+                        end
+                    end
+                end
+            end
+        end)
+    end
+end)
+ 
+local mythicalGymRockSwitch = folder:AddSwitch("Farm Mythical Gym Rock", function(bool)
+    selectrock = "Mythical Gym Rock"
+    getgenv().autoFarm = bool
+ 
+    if bool then
+        spawn(function()
+            while getgenv().autoFarm do
+                task.wait()
+                if game:GetService("Players").LocalPlayer.Durability.Value >= 400000 then
+                    for i, v in pairs(game:GetService("Workspace").machinesFolder:GetDescendants()) do
+                        if v.Name == "neededDurability" and v.Value == 400000 and 
+                           game.Players.LocalPlayer.Character:FindFirstChild("LeftHand") and 
+                           game.Players.LocalPlayer.Character:FindFirstChild("RightHand") then
+ 
+                            firetouchinterest(v.Parent.Rock, game:GetService("Players").LocalPlayer.Character.RightHand, 0)
+                            firetouchinterest(v.Parent.Rock, game:GetService("Players").LocalPlayer.Character.RightHand, 1)
+                            firetouchinterest(v.Parent.Rock, game:GetService("Players").LocalPlayer.Character.LeftHand, 0)
+                            firetouchinterest(v.Parent.Rock, game:GetService("Players").LocalPlayer.Character.LeftHand, 1)
+                            gettool()
+                        end
+                    end
+                end
+            end
+        end)
+    end
+end)
+ 
+local eternalGymRockSwitch = folder:AddSwitch("Farm Eternal Gym Rock", function(bool)
+    selectrock = "Eternal Gym Rock"
+    getgenv().autoFarm = bool
+ 
+    if bool then
+        spawn(function()
+            while getgenv().autoFarm do
+                task.wait()
+                if game:GetService("Players").LocalPlayer.Durability.Value >= 750000 then
+                    for i, v in pairs(game:GetService("Workspace").machinesFolder:GetDescendants()) do
+                        if v.Name == "neededDurability" and v.Value == 750000 and 
+                           game.Players.LocalPlayer.Character:FindFirstChild("LeftHand") and 
+                           game.Players.LocalPlayer.Character:FindFirstChild("RightHand") then
+ 
+                            firetouchinterest(v.Parent.Rock, game:GetService("Players").LocalPlayer.Character.RightHand, 0)
+                            firetouchinterest(v.Parent.Rock, game:GetService("Players").LocalPlayer.Character.RightHand, 1)
+                            firetouchinterest(v.Parent.Rock, game:GetService("Players").LocalPlayer.Character.LeftHand, 0)
+                            firetouchinterest(v.Parent.Rock, game:GetService("Players").LocalPlayer.Character.LeftHand, 1)
+                            gettool()
+                        end
+                    end
+                end
+            end
+        end)
+    end
+end)
+ 
+local legendGymRockSwitch = folder:AddSwitch("Farm Legend Gym Rock", function(bool)
+    selectrock = "Legend Gym Rock"
+    getgenv().autoFarm = bool
+ 
+    if bool then
+        spawn(function()
+            while getgenv().autoFarm do
+                task.wait()
+                if game:GetService("Players").LocalPlayer.Durability.Value >= 1000000 then
+                    for i, v in pairs(game:GetService("Workspace").machinesFolder:GetDescendants()) do
+                        if v.Name == "neededDurability" and v.Value == 1000000 and 
+                           game.Players.LocalPlayer.Character:FindFirstChild("LeftHand") and 
+                           game.Players.LocalPlayer.Character:FindFirstChild("RightHand") then
+ 
+                            firetouchinterest(v.Parent.Rock, game:GetService("Players").LocalPlayer.Character.RightHand, 0)
+                            firetouchinterest(v.Parent.Rock, game:GetService("Players").LocalPlayer.Character.RightHand, 1)
+                            firetouchinterest(v.Parent.Rock, game:GetService("Players").LocalPlayer.Character.LeftHand, 0)
+                            firetouchinterest(v.Parent.Rock, game:GetService("Players").LocalPlayer.Character.LeftHand, 1)
+                            gettool()
+                        end
+                    end
+                end
+            end
+        end)
+    end
+end)
+ 
+local muscleKingGymRockSwitch = folder:AddSwitch("Farm Muscle King Gym Rock", function(bool)
+    selectrock = "Muscle King Gym Rock"
+    getgenv().autoFarm = bool
+ 
+    if bool then
+        spawn(function()
+            while getgenv().autoFarm do
+                task.wait()
+                if game:GetService("Players").LocalPlayer.Durability.Value >= 5000000 then
+                    for i, v in pairs(game:GetService("Workspace").machinesFolder:GetDescendants()) do
+                        if v.Name == "neededDurability" and v.Value == 5000000 and 
+                           game.Players.LocalPlayer.Character:FindFirstChild("LeftHand") and 
+                           game.Players.LocalPlayer.Character:FindFirstChild("RightHand") then
+ 
+                            firetouchinterest(v.Parent.Rock, game:GetService("Players").LocalPlayer.Character.RightHand, 0)
+                            firetouchinterest(v.Parent.Rock, game:GetService("Players").LocalPlayer.Character.RightHand, 1)
+                            firetouchinterest(v.Parent.Rock, game:GetService("Players").LocalPlayer.Character.LeftHand, 0)
+                            firetouchinterest(v.Parent.Rock, game:GetService("Players").LocalPlayer.Character.LeftHand, 1)
+                            gettool()
+                        end
+                    end
+                end
+            end
+        end)
+    end
+end)
+ 
+local ancientJungleRockSwitch = folder:AddSwitch("Farm Ancient Jungle Rock", function(bool)
+    selectrock = "Ancient Jungle Rock"
+    getgenv().autoFarm = bool
+ 
+    if bool then
+        spawn(function()
+            while getgenv().autoFarm do
+                task.wait()
+                if game:GetService("Players").LocalPlayer.Durability.Value >= 10000000 then
+                    for i, v in pairs(game:GetService("Workspace").machinesFolder:GetDescendants()) do
+                        if v.Name == "neededDurability" and v.Value == 10000000 and 
+                           game.Players.LocalPlayer.Character:FindFirstChild("LeftHand") and 
+                           game.Players.LocalPlayer.Character:FindFirstChild("RightHand") then
+ 
+                            firetouchinterest(v.Parent.Rock, game:GetService("Players").LocalPlayer.Character.RightHand, 0)
+                            firetouchinterest(v.Parent.Rock, game:GetService("Players").LocalPlayer.Character.RightHand, 1)
+                            firetouchinterest(v.Parent.Rock, game:GetService("Players").LocalPlayer.Character.LeftHand, 0)
+                            firetouchinterest(v.Parent.Rock, game:GetService("Players").LocalPlayer.Character.LeftHand, 1)
+                            gettool()
+                        end
+                    end
+                end
+            end
+        end)
+    end
+end)
+ 
+local folder3 = AutoFarm:AddFolder("Auto Farm Jungle Gym")
+
+-- Auto Jungle Bench Toggle
+local jungleBenchToggle = false
+folder3:AddSwitch("Auto Jungle Bench", function(State)
+    jungleBenchToggle = State
+    if State then
+        task.spawn(function()
+            while jungleBenchToggle do
+                game.Players.LocalPlayer.Character:SetPrimaryPartCFrame(CFrame.new(-8629.88086, 64.8842468, 1855.03467))
+                game:GetService("VirtualInputManager"):SendKeyEvent(true, Enum.KeyCode.E, false, game)
+                task.wait()
+                game:GetService("VirtualInputManager"):SendKeyEvent(false, Enum.KeyCode.E, false, game)
+                game:GetService("Players").LocalPlayer.muscleEvent:FireServer("rep")
+                task.wait(0.1)
+            end
+        end)
+    end
+end)
+
+-- Auto Jungle Bar Lift Toggle
+local jungleBarLiftToggle = false
+folder3:AddSwitch("Auto Jungle Bar Lift", function(State)
+    jungleBarLiftToggle = State
+    if State then
+        task.spawn(function()
+            while jungleBarLiftToggle do
+                game.Players.LocalPlayer.Character:SetPrimaryPartCFrame(CFrame.new(-8678.05566, 14.5030098, 2089.25977))
+                game:GetService("VirtualInputManager"):SendKeyEvent(true, Enum.KeyCode.E, false, game)
+                task.wait()
+                game:GetService("VirtualInputManager"):SendKeyEvent(false, Enum.KeyCode.E, false, game)
+                game:GetService("Players").LocalPlayer.muscleEvent:FireServer("rep")
+                task.wait(0.1)
+            end
+        end)
+    end
+end)
+
+-- Auto Jungle Squat Toggle
+local jungleSquatToggle = false
+folder3:AddSwitch("Auto Jungle Squat", function(State)
+    jungleSquatToggle = State
+    if State then
+        task.spawn(function()
+            while jungleSquatToggle do
+                game.Players.LocalPlayer.Character:SetPrimaryPartCFrame(CFrame.new(-8377.31934, 4.66914463, 2856.92114, 0.999961913, 1.56388271e-08, -0.00872652605, -1.58251829e-08, 1, -2.12861728e-08, 0.00872652605, 2.14234621e-08, 0.999961913))
+                game:GetService("VirtualInputManager"):SendKeyEvent(true, Enum.KeyCode.E, false, game)
+                task.wait()
+                game:GetService("VirtualInputManager"):SendKeyEvent(false, Enum.KeyCode.E, false, game)
+                game:GetService("Players").LocalPlayer.muscleEvent:FireServer("rep")
+                task.wait(0.1)
+            end
+        end)
+    end
+end)
+
+local folder3 = AutoFarm:AddFolder("Auto Farm Industrial Gym")
+
+-- Auto Jungle Bench Toggle
+local jungleBenchToggle = false
+folder3:AddSwitch("Auto Industrial Bench", function(State)
+    jungleBenchToggle = State
+    if State then
+        task.spawn(function()
+            while jungleBenchToggle do
+                game.Players.LocalPlayer.Character:SetPrimaryPartCFrame(CFrame.new(-5014.51611, 115.208725, 4476.58594, -0.999575138, -4.37821654e-08, 0.0291465465, -4.3081716e-08, 1, 2.46598688e-08, -0.0291465465, 2.33937101e-08, -0.999575138))
+                game:GetService("VirtualInputManager"):SendKeyEvent(true, Enum.KeyCode.E, false, game)
+                task.wait()
+                game:GetService("VirtualInputManager"):SendKeyEvent(false, Enum.KeyCode.E, false, game)
+                game:GetService("Players").LocalPlayer.muscleEvent:FireServer("rep")
+                task.wait(0.1)
+            end
+        end)
+    end
+end)
+
+-- Auto Jungle Bar Lift Toggle
+local jungleBarLiftToggle = false
+folder3:AddSwitch("Auto Industrial Bar Lift", function(State)
+    jungleBarLiftToggle = State
+    if State then
+        task.spawn(function()
+            while jungleBarLiftToggle do
+                game.Players.LocalPlayer.Character:SetPrimaryPartCFrame(CFrame.new(-5492.37158, 58.3428535, 4643.16602, 0.0436159857, 4.01579143e-08, 0.999048352, 1.37346747e-08, 1, -4.07957863e-08, -0.999048352, 1.55009534e-08, 0.0436159857))
+                game:GetService("VirtualInputManager"):SendKeyEvent(true, Enum.KeyCode.E, false, game)
+                task.wait()
+                game:GetService("VirtualInputManager"):SendKeyEvent(false, Enum.KeyCode.E, false, game)
+                game:GetService("Players").LocalPlayer.muscleEvent:FireServer("rep")
+                task.wait(0.1)
+            end
+        end)
+    end
+end)
+
+-- Auto Jungle Squat Toggle
+local jungleSquatToggle = false
+folder3:AddSwitch("Auto Industrial Squat", function(State)
+    jungleSquatToggle = State
+    if State then
+        task.spawn(function()
+            while jungleSquatToggle do
+                game.Players.LocalPlayer.Character:SetPrimaryPartCFrame(CFrame.new(-5219.06494, 58.3428574, 5413.42725, 0.999914527, -3.62760821e-09, -0.0130761229, 2.43159137e-09, 1, -9.14816027e-08, 0.0130761229, 9.144199e-08, 0.999914527))
+                game:GetService("VirtualInputManager"):SendKeyEvent(true, Enum.KeyCode.E, false, game)
+                task.wait()
+                game:GetService("VirtualInputManager"):SendKeyEvent(false, Enum.KeyCode.E, false, game)
+                game:GetService("Players").LocalPlayer.muscleEvent:FireServer("rep")
+                task.wait(0.1)
+            end
+        end)
+    end
+end)
+
+local rebirthsFolder = window:AddTab("Rebirths")
+
+-- Target rebirth input - direct text input
+rebirthsFolder:AddTextBox("Rebirth Target", function(text)
+    local newValue = tonumber(text)
+    if newValue and newValue > 0 then
+        targetRebirthValue = newValue
+        updateStats() -- Call the stats update function
+        
+        game:GetService("StarterGui"):SetCore("SendNotification", {
+            Title = "Objetivo Actualizado",
+            Text = "Nuevo objetivo: " .. tostring(targetRebirthValue) .. " renacimientos",
+            Duration = 0
+        })
+    else
+        game:GetService("StarterGui"):SetCore("SendNotification", {
+            Title = "Entrada InvÃ¡lida",
+            Text = "Por favor ingresa un nÃºmero vÃ¡lido mayor que 0",
+            Duration = 0
+        })
+    end
+end)
+
+-- Create toggle switches
+local infiniteSwitch -- Forward declaration
+
+local targetSwitch = rebirthsFolder:AddSwitch("Auto Rebirth Target", function(bool)
+    _G.targetRebirthActive = bool
+    
+    if bool then
+        -- Turn off infinite rebirth if it's on
+        if _G.infiniteRebirthActive and infiniteSwitch then
+            infiniteSwitch:Set(false)
+            _G.infiniteRebirthActive = false
+        end
+        
+        -- Start target rebirth loop
+        spawn(function()
+            while _G.targetRebirthActive and wait(0.1) do
+                local currentRebirths = game.Players.LocalPlayer.leaderstats.Rebirths.Value
+                
+                if currentRebirths >= targetRebirthValue then
+                    targetSwitch:Set(false)
+                    _G.targetRebirthActive = false
+                    
+                    game:GetService("StarterGui"):SetCore("SendNotification", {
+                        Title = "Â¡Objetivo Alcanzado!",
+                        Text = "Has alcanzado " .. tostring(targetRebirthValue) .. " renacimientos",
+                        Duration = 5
+                    })
+                    
+                    break
+                end
+                
+                game:GetService("ReplicatedStorage").rEvents.rebirthRemote:InvokeServer("rebirthRequest")
+            end
+        end)
+    end
+end, "Renacimiento automÃ¡tico hasta alcanzar el objetivo")
+
+infiniteSwitch = rebirthsFolder:AddSwitch("Auto Rebirth (Infinite)", function(bool)
+    _G.infiniteRebirthActive = bool
+    
+    if bool then
+        -- Turn off target rebirth if it's on
+        if _G.targetRebirthActive and targetSwitch then
+            targetSwitch:Set(false)
+            _G.targetRebirthActive = false
+        end
+        
+        -- Start infinite rebirth loop
+        spawn(function()
+            while _G.infiniteRebirthActive and wait(0.1) do
+                game:GetService("ReplicatedStorage").rEvents.rebirthRemote:InvokeServer("rebirthRequest")
+            end
+        end)
+    end
+end, "Renacimiento continuo sin parar")
+
+local sizeSwitch = rebirthsFolder:AddSwitch("Auto Size 1", function(bool)
+    _G.autoSizeActive = bool
+    
+    if bool then
+        spawn(function()
+            while _G.autoSizeActive and wait() do
+                game:GetService("ReplicatedStorage").rEvents.changeSpeedSizeRemote:InvokeServer("changeSize", 1)
+            end
+        end)
+    end
+end, "Establece el tamaÃ±o del personaje a 1 continuamente")
+
+local teleportSwitch = rebirthsFolder:AddSwitch("Auto Teleport to Muscle King", function(bool)
+    _G.teleportActive = bool
+    
+    if bool then
+        spawn(function()
+            while _G.teleportActive and wait() do
+                if game.Players.LocalPlayer.Character then
+                    game.Players.LocalPlayer.Character:MoveTo(Vector3.new(-8646, 17, -5738))
+                end
+            end
+        end)
+    end
+end, "Teletransporte continuo al Rey MÃºsculo")
+
+rebirthsFolder:AddLabel("Pack Farm")
+
+-- 🔁 Fast Rebirths
+rebirthsFolder:AddSwitch("Fast Rebirths", function(state)
+    getgenv().AutoFarming = state
+    if state then
+        task.spawn(function()
+            local a = ReplicatedStorage
+            local c = LocalPlayer
+            local function equipPetByName(name)
+                local folderPets = c:FindFirstChild("petsFolder")
+                if not folderPets then return end
+                for _, folder in pairs(folderPets:GetChildren()) do
+                    if folder:IsA("Folder") then
+                        for _, pet in pairs(folder:GetChildren()) do
+                            if pet.Name == name then
+                                a.rEvents.equipPetEvent:FireServer("equipPet", pet)
+                            end
+                        end
+                    end
+                end
+            end
+            local function unequipAllPets()
+                local f = c:FindFirstChild("petsFolder")
+                if not f then return end
+                for _, folder in pairs(f:GetChildren()) do
+                    if folder:IsA("Folder") then
+                        for _, pet in pairs(folder:GetChildren()) do
+                            a.rEvents.equipPetEvent:FireServer("unequipPet", pet)
+                        end
+                    end
+                end
+                task.wait(0.1)
+            end
+            local function getGoldenRebirthCount()
+                local g = c:FindFirstChild("ultimatesFolder")
+                if g and g:FindFirstChild("Golden Rebirth") then
+                    return g["Golden Rebirth"].Value
+                end
+                return 0
+            end
+            local function getStrengthRequiredForRebirth()
+                local rebirths = c.leaderstats.Rebirths.Value
+                local baseStrength = 10000 + (5000 * rebirths)
+                local golden = getGoldenRebirthCount()
+                if golden >= 1 and golden <= 5 then
+                    baseStrength = baseStrength * (1 - golden * 0.1)
+                end
+                return math.floor(baseStrength)
+            end
+            while getgenv().AutoFarming do
+                local requiredStrength = getStrengthRequiredForRebirth()
+                unequipAllPets()
+                equipPetByName("Swift Samurai")
+                while c.leaderstats.Strength.Value < requiredStrength and getgenv().AutoFarming do
+                    for _ = 1, 10 do
+                        c.muscleEvent:FireServer("rep")
+                    end
+                    task.wait()
+                end
+                if getgenv().AutoFarming then
+                    unequipAllPets()
+                    equipPetByName("Tribal Overlord")
+                    local oldRebirths = c.leaderstats.Rebirths.Value
+                    repeat
+                        a.rEvents.rebirthRemote:InvokeServer("rebirthRequest")
+                        task.wait(0.1)
+                    until c.leaderstats.Rebirths.Value > oldRebirths or not getgenv().AutoFarming
+                end
+                task.wait()
+            end
+        end)
+    end
+end)
+
+-- 🔒 Lock Position
+rebirthsFolder:AddSwitch("Lock Position", function(Value)
+    if Value then
+        local currentPos = game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame
+        getgenv().posLock = game:GetService("RunService").Heartbeat:Connect(function()
+            if game.Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = currentPos
+            end
+        end)
+    else
+        if getgenv().posLock then
+            getgenv().posLock:Disconnect()
+            getgenv().posLock = nil
+        end
+    end
+end)
+
+-- 🖼️ Hide All Frames
+rebirthsFolder:AddSwitch("Hide All Frames", function(bool)
+    local rSto = game:GetService("ReplicatedStorage")
+    for _, obj in pairs(rSto:GetChildren()) do
+        if obj.Name:match("Frame$") then
+            obj.Visible = not bool
+        end
+    end
+end)
+
+-- 🚀 Anti Lag
+rebirthsFolder:AddButton("Anti Lag", function()
+    for _, v in pairs(game:GetDescendants()) do
+        if v:IsA("ParticleEmitter") or v:IsA("Smoke") or v:IsA("Fire") or v:IsA("Sparkles") then
+            v.Enabled = false
+        end
+    end
+
+    local lighting = game:GetService("Lighting")
+    lighting.GlobalShadows = false
+    lighting.FogEnd = 9e9
+    lighting.Brightness = 0
+
+    settings().Rendering.QualityLevel = 1
+
+    for _, v in pairs(game:GetDescendants()) do
+        if v:IsA("Decal") or v:IsA("Texture") then
+            v.Transparency = 1
+        elseif v:IsA("BasePart") and not v:IsA("MeshPart") then
+            v.Material = Enum.Material.SmoothPlastic
+            if v.Parent and (v.Parent:FindFirstChild("Humanoid") or v.Parent.Parent:FindFirstChild("Humanoid")) then
+            else
+                v.Reflectance = 0
+            end
+        end
+    end
+
+    for _, v in pairs(lighting:GetChildren()) do
+        if v:IsA("BlurEffect") or v:IsA("SunRaysEffect") or v:IsA("ColorCorrectionEffect") or v:IsA("BloomEffect") or v:IsA("DepthOfFieldEffect") then
+            v.Enabled = false
+        end
+    end
+
+    game:GetService("StarterGui"):SetCore("SendNotification", {
+        Title = "Anti Lag Activado",
+        Text = "Full optimization applied!",
+        Duration = 5
+    })
+end)
+
+-- 🟢 Jungle Lift (Nuevo)
+rebirthsFolder:AddButton("Jungle Lift", function()
+    local player = game.Players.LocalPlayer
+    local char = player.Character or player.CharacterAdded:Wait()
+    local hrp = char:WaitForChild("HumanoidRootPart")
+
+    hrp.CFrame = CFrame.new(-8652.8672, 29.2667, 2089.2617)
+    task.wait(0.2)
+
+    local VirtualInputManager = game:GetService("VirtualInputManager")
+    VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
+    task.wait(0.05)
+    VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
+
+    print("[Jungle Lift] Teletransport ejecutado correctamente.")
+end)
+
+local teleport = window:AddTab("Teleport")
+
+teleport:AddButton("Spawn", function()
+    local player = game.Players.LocalPlayer
+    local character = player.Character or player.CharacterAdded:Wait()
+    local humanoidRootPart = character:WaitForChild("HumanoidRootPart")
+    humanoidRootPart.CFrame = CFrame.new(2, 8, 115)
+    
+    game:GetService("StarterGui"):SetCore("SendNotification", {
+        Title = "Teletransporte",
+        Text = "Teleported to Spawn",
+        Duration = 0
+    })
+end)
+
+teleport:AddButton("Secret Area", function()
+    local player = game.Players.LocalPlayer
+    local character = player.Character or player.CharacterAdded:Wait()
+    local humanoidRootPart = character:WaitForChild("HumanoidRootPart")
+    humanoidRootPart.CFrame = CFrame.new(1947, 2, 6191)
+    
+    game:GetService("StarterGui"):SetCore("SendNotification", {
+        Title = "Teletransporte",
+        Text = "Teleported to Secret Area",
+        Duration = 0
+    })
+end)
+
+teleport:AddButton("Tiny Island", function()
+    local player = game.Players.LocalPlayer
+    local character = player.Character or player.CharacterAdded:Wait()
+    local humanoidRootPart = character:WaitForChild("HumanoidRootPart")
+    humanoidRootPart.CFrame = CFrame.new(-34, 7, 1903)
+    
+    game:GetService("StarterGui"):SetCore("SendNotification", {
+        Title = "Teletransporte",
+        Text = "Teleported to Tiny Island",
+        Duration = 0
+    })
+end)
+
+teleport:AddButton("Frozen Island", function()
+    local player = game.Players.LocalPlayer
+    local character = player.Character or player.CharacterAdded:Wait()
+    local humanoidRootPart = character:WaitForChild("HumanoidRootPart")
+    humanoidRootPart.CFrame = CFrame.new(- 2600.00244, 3.67686558, - 403.884369, 0.0873617008, 1.0482899e-09, 0.99617666, 3.07204253e-08, 1, - 3.7464023e-09, - 0.99617666, 3.09302628e-08, 0.0873617008)
+    
+    game:GetService("StarterGui"):SetCore("SendNotification", {
+        Title = "Teletransporte",
+        Text = "Teleported to Frozen Island",
+        Duration = 0
+    })
+end)
+
+teleport:AddButton("Mythical Island", function()
+    local player = game.Players.LocalPlayer
+    local character = player.Character or player.CharacterAdded:Wait()
+    local humanoidRootPart = character:WaitForChild("HumanoidRootPart")
+    humanoidRootPart.CFrame = CFrame.new(2255, 7, 1071)
+    
+    game:GetService("StarterGui"):SetCore("SendNotification", {
+        Title = "Teletransporte",
+        Text = "Teleported to Mythical Island",
+        Duration = 0
+    })
+end)
+
+teleport:AddButton("Hell Island", function()
+    local player = game.Players.LocalPlayer
+    local character = player.Character or player.CharacterAdded:Wait()
+    local humanoidRootPart = character:WaitForChild("HumanoidRootPart")
+    humanoidRootPart.CFrame = CFrame.new(-6768, 7, -1287)
+    
+    game:GetService("StarterGui"):SetCore("SendNotification", {
+        Title = "Teletransporte",
+        Text = "Teleported to Hell Island",
+        Duration = 0
+    })
+end)
+
+teleport:AddButton("Legend Island", function()
+    local player = game.Players.LocalPlayer
+    local character = player.Character or player.CharacterAdded:Wait()
+    local humanoidRootPart = character:WaitForChild("HumanoidRootPart")
+    humanoidRootPart.CFrame = CFrame.new(4604, 991, -3887)
+    
+    game:GetService("StarterGui"):SetCore("SendNotification", {
+        Title = "Teletransporte",
+        Text = "Teleported to Legend Island",
+        Duration = 0
+    })
+end)
+
+teleport:AddButton("Muscle King Island", function()
+    local player = game.Players.LocalPlayer
+    local character = player.Character or player.CharacterAdded:Wait()
+    local humanoidRootPart = character:WaitForChild("HumanoidRootPart")
+    humanoidRootPart.CFrame = CFrame.new(-8646, 17, -5738)
+    
+    game:GetService("StarterGui"):SetCore("SendNotification", {
+        Title = "Teletransporte",
+        Text = "Teleported to Muscle King",
+        Duration = 0
+    })
+end)
+
+teleport:AddButton("Jungle Island", function()
+    local player = game.Players.LocalPlayer
+    local character = player.Character or player.CharacterAdded:Wait()
+    local humanoidRootPart = character:WaitForChild("HumanoidRootPart")
+    humanoidRootPart.CFrame = CFrame.new(-8659, 6, 2384)
+    
+    game:GetService("StarterGui"):SetCore("SendNotification", {
+        Title = "Teletransporte",
+        Text = "Teleported to Jungle Island",
+        Duration = 0
+    })
+end)
+
+teleport:AddButton("Brawl Lava", function()
+    local player = game.Players.LocalPlayer
+    local character = player.Character or player.CharacterAdded:Wait()
+    local humanoidRootPart = character:WaitForChild("HumanoidRootPart")
+    humanoidRootPart.CFrame = CFrame.new(4471, 119, -8836)
+    
+    game:GetService("StarterGui"):SetCore("SendNotification", {
+        Title = "Teletransporte",
+        Text = "Teleported to Brawl Lava",
+        Duration = 0
+    })
+end)
+
+teleport:AddButton("Brawl Desert", function()
+    local player = game.Players.LocalPlayer
+    local character = player.Character or player.CharacterAdded:Wait()
+    local humanoidRootPart = character:WaitForChild("HumanoidRootPart")
+    humanoidRootPart.CFrame = CFrame.new(960, 17, -7398)
+    
+    game:GetService("StarterGui"):SetCore("SendNotification", {
+        Title = "Teletransporte",
+        Text = "Teleported to Brawl Desert",
+        Duration = 0
+    })
+end)
+
+teleport:AddButton("Brawl Regular", function()
+    local player = game.Players.LocalPlayer
+    local character = player.Character or player.CharacterAdded:Wait()
+    local humanoidRootPart = character:WaitForChild("HumanoidRootPart")
+    humanoidRootPart.CFrame = CFrame.new(-1849, 20, -6335)
+    
+    game:GetService("StarterGui"):SetCore("SendNotification", {
+        Title = "Teletransporte",
+        Text = "Teleported to Brawl Regular",
+        Duration = 0
+    })
+end)
+
+
+-- Create Tab
+local crystalsTab = window:AddTab("Crystals")
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local cPetShopFolder = ReplicatedStorage:WaitForChild("shared"):WaitForChild("runtime"):WaitForChild("cPetShopFolder")
+local cPetShopRemote = ReplicatedStorage:WaitForChild("rEvents"):WaitForChild("cPetShopRemote")
+
+local crystalData = {
+    {"Blue Birdie"}, {"Orange Hedgehog"}, {"Red Kitty"}, {"Dark Vampy"},
+    {"Blue Bunny"}, {"Silver Dog"}, {"Green Butterfly"}, {"Crimson Falcon"},
+    {"Dark Golem"}, {"Yellow Butterfly"}, {"Purple Dragon"}, {"Blue Phoenix"},
+    {"Orange Pegasus"}, {"Purple Falcon"}, {"Red Dragon"}, {"Blue Firecaster"},
+    {"Golden Phoenix"}, {"Red Firecaster"}, {"Infernal Dragon"}, {"White Pegasus"},
+    {"Inferno"}, {"Ultra Birdie"}, {"Magic Butterfly"}, {"Green Firecaster"},
+    {"White Phoenix"}, {"Supernova"}, {"Frostwave Legends Penguin"},
+    {"Phantom Genesis Dragon"}, {"Dark Legends Manticore"}, {"Ultimate Supernova Pegasus"},
+    {"Aether Spirit Bunny"}, {"Cybernetic Showdown Dragon"}, {"Eternal Strike Leviathan"},
+    {"Lightning Strike Phantom"}, {"Darkstar Hunter"}, {"Muscle Sensei"},
+    {"Neon Guardian"}, {"Eternal Megastrike"}, {"Golden Viking"}, {"Core Pup"},
+    {"Volt Talon"}, {"Reactor Beast"}, {"Plasma Ravager"}, {"Titan Reactor"},
+    {"Apex Overlord"}, {"Gold Warrior"}
+}
+
+local auraNamesList = {
+    ["Blue Aura"] = true,
+    ["Red Aura"] = true,
+    ["Green Aura"] = true,
+    ["Purple Aura"] = true,
+    ["Yellow Aura"] = true,
+    ["Lightning"] = true,
+    ["Electro"] = true,
+    ["Power Lightning"] = true,
+    ["Dark Lightning"] = true,
+    ["Inferno"] = true,
+    ["Supernova"] = true,
+    ["Azure Tundra"] = true,
+    ["Ultra Inferno"] = true,
+    ["Grand Supernova"] = true,
+    ["Eternal Megastrike"] = true,
+    ["Entropic Blast"] = true,
+    ["Astral Electro"] = true,
+    ["Dark Electro"] = true,
+    ["Muscle King"] = true
+}
+
+local allPets = {}
+local allAuras = {}
+local petMap = {}
+local auraMap = {}
+
+-- Kunin lahat ng pets mula sa crystalData
+for _, item in ipairs(crystalData) do
+    local itemName = item[1]
+    if itemName and not petMap[itemName] then
+        petMap[itemName] = true
+        table.insert(allPets, itemName)
+    end
+end
+
+-- Kunin lahat ng auras direkta mula sa auraNamesList
+for auraName, _ in pairs(auraNamesList) do
+    if not auraMap[auraName] then
+        auraMap[auraName] = true
+        table.insert(allAuras, auraName)
+    end
+end
+
+table.sort(allPets)
+table.sort(allAuras)
+
+local selectedPet = ""
+local selectedAura = ""
+
+crystalsTab:AddLabel("=== Buy pets and auras ===")
+
+local petDropdown = crystalsTab:AddDropdown("Select pet", function(text)
+    selectedPet = text
+    print("Pet selected: " .. tostring(text))
+end)
+
+for _, petName in ipairs(allPets) do
+    petDropdown:Add(petName)
+end
+
+local auraDropdown = crystalsTab:AddDropdown("Select Aura", function(text)
+    selectedAura = text
+    print("Aura selected: " .. tostring(text))
+end)
+
+for _, auraName in ipairs(allAuras) do
+    auraDropdown:Add(auraName)
+end
+
+crystalsTab:AddLabel("=== System to buys ===")
+
+crystalsTab:AddSwitch("Auto Buy Pet", function(bool)
+    _G.AutoBuyPet = bool
+    if bool then
+        if selectedPet == "" then
+            print("Please select a pet first!")
+            return
+        end
+        task.spawn(function()
+            while _G.AutoBuyPet and selectedPet ~= "" do
+                local petToBuy = cPetShopFolder:FindFirstChild(selectedPet)
+                if petToBuy then
+                    pcall(function()
+                        cPetShopRemote:InvokeServer(petToBuy)
+                    end)
+                end
+                task.wait(0.1)
+            end
+        end)
+    end
+end)
+
+crystalsTab:AddSwitch("Auto buy Aura", function(bool)
+    _G.AutoBuyAura = bool
+    if bool then
+        if selectedAura == "" then
+            print("Please select an aura first!")
+            return
+        end
+        task.spawn(function()
+            while _G.AutoBuyAura and selectedAura ~= "" do
+                local auraToBuy = cPetShopFolder:FindFirstChild(selectedAura)
+                if auraToBuy then
+                    pcall(function()
+                        cPetShopRemote:InvokeServer(auraToBuy)
+                    end)
+                end
+                task.wait(0.1)
+            end
+        end)
+    end
+end)
+
+local selectedCrystal = "Blue Crystal"
+local selectedOpenMode = "1x" -- Default ay 1x
+local autoOpenEnabled = false
+
+-- Create Dropdown Menu para sa Crystals
+local crystalDropdown = crystalsTab:AddDropdown("Select Crystal", function(text)
+    selectedCrystal = text
+end)
+
+-- Add all Muscle Legends crystals to the dropdown
+crystalDropdown:Add("Blue Crystal")
+crystalDropdown:Add("Green Crystal")
+crystalDropdown:Add("Frost Crystal")
+crystalDropdown:Add("Mythical Crystal")
+crystalDropdown:Add("Inferno Crystal")
+crystalDropdown:Add("Legends Crystal")
+crystalDropdown:Add("Muscle Elite Crystal")
+crystalDropdown:Add("Galaxy Oracle Crystal")
+crystalDropdown:Add("Jungle Crystal")
+crystalDropdown:Add("Industrial Crystal")
+
+-- Dropdown para mamili kung 1x, 3x, o 10x ang bubuksan
+local amountDropdown = crystalsTab:AddDropdown("Open Amount", function(text)
+    selectedOpenMode = text
+end)
+
+amountDropdown:Add("1x")
+amountDropdown:Add("3x")
+amountDropdown:Add("10x")
+
+-- Switch para sa Auto Open (Gagana sa kahit anong crystal at sa napili mong mode)
+crystalsTab:AddSwitch("Auto Open Crystal", function(state)
+    autoOpenEnabled = state
+    
+    if autoOpenEnabled then
+        task.spawn(function()
+            while autoOpenEnabled do
+                pcall(function()
+                    if selectedOpenMode == "1x" then
+                        local args = {
+                            [1] = "openCrystal",
+                            [2] = selectedCrystal
+                        }
+                        game:GetService("ReplicatedStorage").rEvents.openCrystalRemote:InvokeServer(unpack(args))
+                    elseif selectedOpenMode == "3x" then
+                        local args = {
+                            [1] = "openCrystalBulk",
+                            [2] = selectedCrystal,
+                            [3] = 3
+                        }
+                        game:GetService("ReplicatedStorage").rEvents.openCrystalRemote:InvokeServer(unpack(args))
+                    elseif selectedOpenMode == "10x" then
+                        -- Kung ang laro ay may 10x bulk remote o gusto mong subukan ang 10 value:
+                        local args = {
+                            [1] = "openCrystalBulk",
+                            [2] = selectedCrystal,
+                            [3] = 10 -- Pinalitan na nating 10
+                        }
+                        game:GetService("ReplicatedStorage").rEvents.openCrystalRemote:InvokeServer(unpack(args))
+                    end
+                end)
+                
+                task.wait(0.5)
+            end
+        end)
+    end
+end)
+
+local autoSellFolder = crystalsTab:AddFolder("Auto Sell")
+
+local function createAutoSellSwitch(tab, petName)
+    local autoSellEnabled = false
+    
+    autoSellFolder:AddSwitch("Auto Sell " .. petName, function(state)
+        autoSellEnabled = state
+        
+        if autoSellEnabled then
+            task.spawn(function()
+                while autoSellEnabled do
+                    local player = game:GetService("Players").LocalPlayer
+                    local petsFolder = player and player:FindFirstChild("petsFolder")
+                    local petTarget = nil
+                    
+                    if petsFolder then
+                        for _, folder in ipairs(petsFolder:GetChildren()) do
+                            if folder:IsA("Folder") or folder:IsA("Configuration") then
+                                local found = folder:FindFirstChild(petName)
+                                if found then
+                                    petTarget = found
+                                    break
+                                end
+                            end
+                        end
+                    end
+                    
+                    if petTarget then
+                        local args = {
+                            [1] = "sellPet",
+                            [2] = petTarget
+                        }
+
+                        game:GetService("ReplicatedStorage").rEvents.sellPetEvent:FireServer(unpack(args))
+                    end
+                    
+                    task.wait(1)
+                end
+            end)
+        end
+    end)
+end
+
+createAutoSellSwitch(crystalsTab, "Core Pup")
+createAutoSellSwitch(crystalsTab, "Volt Talon")
+createAutoSellSwitch(crystalsTab, "Reactor Beast")
+createAutoSellSwitch(crystalsTab, "Plasma Ravager")
+createAutoSellSwitch(crystalsTab, "Titan Reactor")
+createAutoSellSwitch(crystalsTab, "Apex Overlord")
+
+local autoEvolveFolder = crystalsTab:AddFolder("Auto Evolve")
+
+local function createAutoEvolveSwitch(folder, petName)
+    local autoEvolveEnabled = false
+    
+    folder:AddSwitch("Auto Evolve " .. petName, function(state)
+        autoEvolveEnabled = state
+        
+        if autoEvolveEnabled then
+            task.spawn(function()
+                while autoEvolveEnabled do
+                    local args = {
+                        [1] = "evolvePet",
+                        [2] = petName
+                    }
+
+                    game:GetService("ReplicatedStorage").rEvents.petEvolveEvent:FireServer(unpack(args))
+                    task.wait(1.5)
+                end
+            end)
+        end
+    end)
+end
+
+createAutoEvolveSwitch(autoEvolveFolder, "Core Pup")
+createAutoEvolveSwitch(autoEvolveFolder, "Volt Talon")
+createAutoEvolveSwitch(autoEvolveFolder, "Reactor Beast")
+createAutoEvolveSwitch(autoEvolveFolder, "Plasma Ravager")
+createAutoEvolveSwitch(autoEvolveFolder, "Titan Reactor")
+createAutoEvolveSwitch(autoEvolveFolder, "Apex Overload")
+
+local autoEvolveAllEnabled = false
+
+autoEvolveFolder:AddSwitch("Auto Evolve All Pets", function(state)
+    autoEvolveAllEnabled = state
+    
+    if autoEvolveAllEnabled then
+        task.spawn(function()
+            while autoEvolveAllEnabled do
+                local player = game:GetService("Players").LocalPlayer
+                local petsFolder = player and player:FindFirstChild("petsFolder")
+                
+                if petsFolder then
+                    for _, subfolder in ipairs(petsFolder:GetChildren()) do
+                        if subfolder:IsA("Folder") or subfolder:IsA("Configuration") then
+                            for _, pet in ipairs(subfolder:GetChildren()) do
+                                if not autoEvolveAllEnabled then break end
+                                
+                                local args = {
+                                    [1] = "evolvePet",
+                                    [2] = pet.Name
+                                }
+
+                                game:GetService("ReplicatedStorage").rEvents.petEvolveEvent:FireServer(unpack(args))
+                                task.wait(0.2)
+                            end
+                        end
+                    end
+                end
+                
+                task.wait(1.5)
+            end
+        end)
+    end
+end)
+
+local Gift = window:AddTab("Gift")
+Gift:AddLabel("Gifting Protein egg:").TextSize = 22
+
+local proteinEggLabel = Gift:AddLabel("Protein Eggs: 0")
+proteinEggLabel.TextSize = 20
+
+local selectedEggPlayer = nil
+local eggCount = 0
+
+local eggDropdown = Gift:AddDropdown("Player to Gift Eggs", function(selectedDisplayName)
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr.DisplayName == selectedDisplayName then
+            selectedEggPlayer = plr
+            break
+        end
+    end
+end)
+
+for _, plr in ipairs(Players:GetPlayers()) do
+    if plr ~= Players.LocalPlayer then
+        eggDropdown:Add(plr.DisplayName)
+    end
+end
+
+Players.PlayerAdded:Connect(function(plr)
+    if plr ~= Players.LocalPlayer then
+        eggDropdown:Add(plr.DisplayName)
+    end
+end)
+
+Gift:AddTextBox("Amount of Eggs", function(text)
+    eggCount = tonumber(text) or 0
+end)
+
+Gift:AddButton("Gift Eggs", function()
+    if selectedEggPlayer and eggCount > 0 then
+        for i = 1, eggCount do
+            local egg = Players.LocalPlayer.consumablesFolder:FindFirstChild("Protein Egg")
+            if egg then
+                ReplicatedStorage.rEvents.giftRemote:InvokeServer("giftRequest", selectedEggPlayer, egg)
+                task.wait(0.1)
+            end
+        end
+    end
+end)
+
+Gift:AddLabel("Gifting Tropical Shakes:").TextSize = 22
+
+local tropicalShakeLabel = Gift:AddLabel("Tropical Shakes: 0")
+tropicalShakeLabel.TextSize = 18
+
+local selectedShakePlayer = nil
+local shakeCount = 0
+
+local shakeDropdown = Gift:AddDropdown("Player to Gift Tropical Shakes", function(selectedDisplayName)
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr.DisplayName == selectedDisplayName then
+            selectedShakePlayer = plr
+            break
+        end
+    end
+end)
+
+for _, plr in ipairs(Players:GetPlayers()) do
+    if plr ~= Players.LocalPlayer then
+        shakeDropdown:Add(plr.DisplayName)
+    end
+end
+
+Players.PlayerAdded:Connect(function(plr)
+    if plr ~= Players.LocalPlayer then
+        shakeDropdown:Add(plr.DisplayName)
+    end
+end)
+
+Gift:AddTextBox("Tropical Shakes gift", function(text)
+    shakeCount = tonumber(text) or 0
+end)
+
+Gift:AddButton("Gift Tropical Shakes", function()
+    if selectedShakePlayer and shakeCount > 0 then
+        for i = 1, shakeCount do
+            local shake = Players.LocalPlayer.consumablesFolder:FindFirstChild("Tropical Shake")
+            if shake then
+                ReplicatedStorage.rEvents.giftRemote:InvokeServer("giftRequest", selectedShakePlayer, shake)
+                task.wait(0.1)
+            end
+        end
+    end
+end)
+
+local function updateItemCount()
+    local proteinEggCount = 0
+    local tropicalShakeCount = 0
+
+    local backpack = Players.LocalPlayer:WaitForChild("Backpack")
+    if backpack then
+        for _, item in ipairs(backpack:GetChildren()) do
+            if item.Name == "Protein Egg" then
+                proteinEggCount = proteinEggCount + 1
+            elseif item.Name == "Tropical Shake" or item.Name == "Piñas" then
+                tropicalShakeCount = tropicalShakeCount + 1
+            end
+        end
+    end
+
+    proteinEggLabel.Text = "Protein Eggs: " .. proteinEggCount
+    tropicalShakeLabel.Text = "Tropical Shakes: " .. tropicalShakeCount
+end
+
+task.spawn(function()
+    while true do
+        updateItemCount()
+        task.wait(0.25)
+    end
+end)
+
+---------------------------------------------------------
+-- [SECTION 1: LOCAL PLAYER STATS TAB]
+---------------------------------------------------------
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+
+if not LocalPlayer then
+    pcall(function() Players:GetPropertyChangedSignal("LocalPlayer"):Wait() end)
+    LocalPlayer = Players.LocalPlayer or Players.PlayerAdded:Wait()
+end
+
+if _G.LocalTracker then _G.LocalTracker = nil end
+_G.LocalTracker = {
+    Config = {
+        Stats = {"Strength", "Durability", "Rebirths", "Agility", "Kills", "Brawls", "Good Karma", "Evil Karma", "Gems"},
+        Suffixes = {"K", "M", "B", "T", "Qa", "Qi", "Sx", "Sp", "Oc", "No", "Dc", "UDc", "DDc", "TDc", "QaDc", "QiDc", "SxDc", "SpDc", "ODc", "NDc", "Vg"}
+    },
+    Labels = {},
+    StartStats = {},
+    CachedObjects = {},
+    Connections = {},
+    TotalGained = {},
+    LastValues = {},
+    Rates = {},
+    LastUpdates = {},
+    StartTime = os.time(),
+    Utils = {}
+}
+
+_G.LocalTracker.Utils.updateLabelText = function(name, content)
+    local label = _G.LocalTracker.Labels[name]
+    if not label then return end
+    local ok = pcall(function() label.Text = content end)
+    if not ok then ok = pcall(function() label:SetText(content) end) end
+    if not ok then pcall(function() label:UpdateLabel(content) end) end
+end
+
+_G.LocalTracker.Utils.formatNumber = function(value)
+    if not value or typeof(value) ~= "number" then return "0" end
+    local absVal = math.abs(value)
+    if absVal < 1000 then 
+        return tostring(value < 0 and -math.floor(absVal) or math.floor(absVal)) 
+    end
+    local index = math.floor(math.log10(absVal) / 3)
+    if index > #_G.LocalTracker.Config.Suffixes then index = #_G.LocalTracker.Config.Suffixes end
+    return string.format("%.1f", value / (10 ^ (index * 3))):gsub("%.0$", "") .. (_G.LocalTracker.Config.Suffixes[index] or "")
+end
+
+_G.LocalTracker.Utils.scanForStatFast = function(statName)
+    if not LocalPlayer then return nil end
+    local lowerTarget = string.lower(statName)
+    local cleanTarget = lowerTarget:gsub("%s+", ""):gsub("_+", "")
+    
+    local function matches(name)
+        local lName = string.lower(name)
+        local cName = lName:gsub("%s+", ""):gsub("_+", "")
+        return string.find(lName, lowerTarget) or cName == cleanTarget or string.find(cName, cleanTarget)
+    end
+    
+    local classicHubs = {"leaderstats", "leaderstats2", "Stats", "PlayerData", "Data", "Currency"}
+    for i = 1, #classicHubs do
+        local folder = LocalPlayer:FindFirstChild(classicHubs[i])
+        if folder then
+            local children = folder:GetChildren()
+            for j = 1, #children do
+                local child = children[j]
+                if matches(child.Name) and string.find(child.ClassName, "Value") then
+                    return child
+                end
+            end
+        end
+    end
+
+    local rootChildren = LocalPlayer:GetChildren()
+    for i = 1, #rootChildren do
+        local child = rootChildren[i]
+        if matches(child.Name) and string.find(child.ClassName, "Value") then
+            return child
+        elseif child:IsA("Folder") or child:IsA("Configuration") then
+            local subChildren = child:GetChildren()
+            for j = 1, #subChildren do
+                local subChild = subChildren[j]
+                if matches(subChild.Name) and string.find(subChild.ClassName, "Value") then
+                    return subChild
+                end
+            end
+        end
+    end
+    
+    return nil
+end
+
+_G.LocalTracker.Utils.computeAndRenderStat = function(name, currentVal)
+    local currentTime = os.time()
+    local startVal = _G.LocalTracker.StartStats[name]
+    
+    if not startVal then
+        _G.LocalTracker.StartStats[name] = currentVal
+        startVal = currentVal
+        _G.LocalTracker.TotalGained[name] = 0
+        _G.LocalTracker.LastValues[name] = currentVal
+        _G.LocalTracker.LastUpdates[name] = currentTime
+        _G.LocalTracker.Rates[name] = 0
+    end
+    
+    _G.LocalTracker.TotalGained[name] = _G.LocalTracker.TotalGained[name] or 0
+    _G.LocalTracker.LastValues[name] = _G.LocalTracker.LastValues[name] or currentVal
+    _G.LocalTracker.LastUpdates[name] = _G.LocalTracker.LastUpdates[name] or currentTime
+    _G.LocalTracker.Rates[name] = _G.LocalTracker.Rates[name] or 0
+
+    if currentVal < _G.LocalTracker.LastValues[name] then
+        local progressBeforeReset = math.max(_G.LocalTracker.LastValues[name] - startVal, 0)
+        _G.LocalTracker.TotalGained[name] = _G.LocalTracker.TotalGained[name] + progressBeforeReset
+        _G.LocalTracker.StartStats[name] = currentVal
+        startVal = currentVal
+    end
+
+    local diff = currentVal - _G.LocalTracker.LastValues[name]
+    if diff > 0 then
+        local timePassed = math.max(currentTime - _G.LocalTracker.LastUpdates[name], 1)
+        _G.LocalTracker.Rates[name] = diff / timePassed
+        _G.LocalTracker.LastUpdates[name] = currentTime
+    end
+    
+    _G.LocalTracker.LastValues[name] = currentVal
+
+    local currentGain = math.max(currentVal - startVal, 0)
+    local gained = _G.LocalTracker.TotalGained[name] + currentGain
+    local formattedCurrent = _G.LocalTracker.Utils.formatNumber(currentVal)
+    local activeRate = _G.LocalTracker.Rates[name] or 0
+    
+    if gained > 0 and activeRate > 0 then
+        _G.LocalTracker.Utils.updateLabelText(name, string.format(
+            "%s: %s (+%s) | M: %s | H: %s | D: %s | W: %s | MO: %s",
+            name, formattedCurrent, _G.LocalTracker.Utils.formatNumber(gained),
+            _G.LocalTracker.Utils.formatNumber(activeRate * 60), 
+            _G.LocalTracker.Utils.formatNumber(activeRate * 3600), 
+            _G.LocalTracker.Utils.formatNumber(activeRate * 86400), 
+            _G.LocalTracker.Utils.formatNumber(activeRate * 604800),
+            _G.LocalTracker.Utils.formatNumber(activeRate * 2592000)
+        ))
+    else
+        _G.LocalTracker.Utils.updateLabelText(name, string.format("%s: %s (+0) | M: 0 | H: 0 | D: 0 | W: 0 | MO: 0", name, formattedCurrent))
+    end
+end
+
+_G.LocalTracker.Utils.bindObjectSignals = function(name, obj)
+    _G.LocalTracker.CachedObjects[name] = obj
+    _G.LocalTracker.StartStats[name] = tonumber(obj.Value) or 0
+    _G.LocalTracker.LastValues[name] = tonumber(obj.Value) or 0
+    _G.LocalTracker.TotalGained[name] = _G.LocalTracker.TotalGained[name] or 0
+    _G.LocalTracker.LastUpdates[name] = os.time()
+    _G.LocalTracker.Rates[name] = 0
+    
+    if _G.LocalTracker.Connections[name] then
+        pcall(function() _G.LocalTracker.Connections[name]:Disconnect() end)
+    end
+    
+    _G.LocalTracker.Connections[name] = obj.Changed:Connect(function(newVal)
+        _G.LocalTracker.Utils.computeAndRenderStat(name, tonumber(newVal) or 0)
+    end)
+    
+    _G.LocalTracker.Utils.computeAndRenderStat(name, _G.LocalTracker.StartStats[name])
+end
+
+_G.LocalTracker.TrackerTab = nil
+pcall(function() _G.LocalTracker.TrackerTab = window:AddTab("Stats 📊") end)
+
+_G.LocalTracker.ClockLabel = _G.LocalTracker.TrackerTab and _G.LocalTracker.TrackerTab:AddLabel("Session Time: 00:00:00") or nil
+
+for i = 1, #_G.LocalTracker.Config.Stats do
+    local name = _G.LocalTracker.Config.Stats[i]
+    _G.LocalTracker.StartStats[name] = 0
+    
+    local foundObj = _G.LocalTracker.Utils.scanForStatFast(name)
+    local currentText = name .. ": 0 (+0) | M: 0 | H: 0 | D: 0 | W: 0 | MO: 0"
+    
+    if foundObj then
+        local initialVal = tonumber(foundObj.Value) or 0
+        _G.LocalTracker.StartStats[name] = initialVal
+        _G.LocalTracker.LastValues[name] = initialVal
+        currentText = string.format("%s: %s (+0) | M: 0 | H: 0 | D: 0 | W: 0 | MO: 0", name, _G.LocalTracker.Utils.formatNumber(initialVal))
+    end
+    
+    if _G.LocalTracker.TrackerTab then
+        pcall(function() _G.LocalTracker.Labels[name] = _G.LocalTracker.TrackerTab:AddLabel(currentText) end)
+    end
+    
+    if foundObj then
+        _G.LocalTracker.Utils.bindObjectSignals(name, foundObj)
+    end
+end
+
+task.spawn(function()
+    while task.wait(1) do
+        local elapsedSeconds = math.max(os.time() - _G.LocalTracker.StartTime, 1)
+        local currentTime = os.time()
+        
+        local hours = math.floor(elapsedSeconds / 3600)
+        local minutes = math.floor((elapsedSeconds % 3600) / 60)
+        local seconds = elapsedSeconds % 60
+        if _G.LocalTracker.ClockLabel then
+            pcall(function() _G.LocalTracker.ClockLabel.Text = string.format("Session Time: %02d:%02d:%02d", hours, minutes, seconds) end)
+        end
+        
+        for i = 1, #_G.LocalTracker.Config.Stats do
+            local name = _G.LocalTracker.Config.Stats[i]
+            local obj = _G.LocalTracker.CachedObjects[name]
+            if obj then
+                local lastActive = _G.LocalTracker.LastUpdates[name] or currentTime
+                if currentTime - lastActive > 60 then
+                    _G.LocalTracker.Rates[name] = math.max((_G.LocalTracker.Rates[name] or 0) * 0.99, 0)
+                    if _G.LocalTracker.Rates[name] < 0.001 then _G.LocalTracker.Rates[name] = 0 end
+                    _G.LocalTracker.Utils.computeAndRenderStat(name, tonumber(obj.Value) or 0)
+                end
+            end
+        end
+    end
+end)
+
+---------------------------------------------------------
+-- [SECTION 2: SHARED UTILITIES & CENTRAL CORES]
+---------------------------------------------------------
+do
+    local PlayersRef = game:GetService("Players")
+    local LocalPlayerRef = PlayersRef.LocalPlayer
+
+    if not LocalPlayerRef then
+        pcall(function() PlayersRef:GetPropertyChangedSignal("LocalPlayer"):Wait() end)
+        LocalPlayerRef = PlayersRef.LocalPlayer or PlayersRef.PlayerAdded:Wait()
+    end
+
+    if _G.TrackerCore then _G.TrackerCore = nil end
+    _G.TrackerCore = {
+        Config = {
+            Stats = {"Strength", "Durability", "Rebirths", "Agility", "Kills", "Brawls", "Good Karma", "Evil Karma", "Gems"},
+            Suffixes = {"K", "M", "B", "T", "Qa", "Qi", "Sx", "Sp", "Oc", "No", "Dc", "UDc", "DDc", "TDc", "QaDc", "QiDc", "SxDc", "SpDc", "ODc", "NDc", "Vg"}
+        },
+        SpyState = { target = nil, startTime = os.time(), labels = {}, start = {}, total = {}, last = {}, rate = {}, ticks = {} },
+        Utils = {}
+    }
+
+    _G.TrackerCore.Utils.updateLabelText = function(label, content)
+        if not label then return end
+        local ok = pcall(function() label.Text = content end)
+        if not ok then ok = pcall(function() label:SetText(content) end) end
+        if not ok then pcall(function() label:UpdateLabel(content) end) end
+    end
+
+    _G.TrackerCore.Utils.formatNumber = function(value)
+        if not value or typeof(value) ~= "number" then return "0" end
+        local absVal = math.abs(value)
+        if absVal < 1000 then 
+            return tostring(value < 0 and -math.floor(absVal) or math.floor(absVal)) 
+        end
+        local index = math.floor(math.log10(absVal) / 3)
+        if index > #_G.TrackerCore.Config.Suffixes then index = #_G.TrackerCore.Config.Suffixes end
+        return string.format("%.1f", value / (10 ^ (index * 3))):gsub("%.0$", "") .. (_G.TrackerCore.Config.Suffixes[index] or "")
+    end
+
+    _G.TrackerCore.Utils.locatePlayerStatObject = function(playerInstance, statName)
+        if not playerInstance then return nil end
+        local lowerTarget = string.lower(statName)
+        local cleanTarget = lowerTarget:gsub("%s+", ""):gsub("_+", "")
+        
+        local function matches(name)
+            local lName = string.lower(name)
+            local cName = lName:gsub("%s+", ""):gsub("_+", "")
+            return string.find(lName, lowerTarget) or cName == cleanTarget or string.find(cName, cleanTarget)
+        end
+        
+        local classicHubs = {"leaderstats", "leaderstats2", "Stats", "PlayerData", "Data", "Currency"}
+        
+        for i = 1, #classicHubs do
+            local folder = playerInstance:FindFirstChild(classicHubs[i])
+            if folder then
+                local children = folder:GetChildren()
+                for j = 1, #children do
+                    local child = children[j]
+                    if matches(child.Name) and string.find(child.ClassName, "Value") then
+                        return child
+                    end
+                end
+            end
+        end
+
+        local rootChildren = playerInstance:GetChildren()
+        for i = 1, #rootChildren do
+            local child = rootChildren[i]
+            if matches(child.Name) and string.find(child.ClassName, "Value") then
+                return child
+            elseif child:IsA("Folder") or child:IsA("Configuration") then
+                local subChildren = child:GetChildren()
+                for j = 1, #subChildren do
+                    local subChild = subChildren[j]
+                    if matches(subChild.Name) and string.find(subChild.ClassName, "Value") then
+                        return subChild
+                    end
+                end
+            end
+        end
+        return nil
+    end
+
+    ---------------------------------------------------------
+    -- [SECTION 3: SPY PLAYER INTERFACE FIELDS]
+    ---------------------------------------------------------
+    _G.TrackerCore.SpyTab = nil
+    pcall(function() _G.TrackerCore.SpyTab = window:AddTab("Spy Stats Player 👁️") end)
+
+    -- [[ SINGLE TARGET DROPDOWN ]]
+    local singleTargetDropdown = _G.TrackerCore.SpyTab and _G.TrackerCore.SpyTab:AddDropdown("Select Player...", function(text)
+        local S = _G.TrackerCore.SpyState
+        if text == "None" or text == "" then
+            S.target, S.start, S.total, S.last, S.rate, S.ticks = nil, {}, {}, {}, {}, {}
+            return
+        end
+        
+        local found = nil
+        for _, p in ipairs(PlayersRef:GetPlayers()) do
+            if p.DisplayName == text or p.Name == text then
+                found = p
+                break
+            end
+        end
+
+        if found then
+            S.target, S.startTime, S.start, S.total, S.last, S.rate, S.ticks = found, os.time(), {}, {}, {}, {}, {}
+            local curT = os.time()
+            for _, name in ipairs(_G.TrackerCore.Config.Stats) do
+                local obj = _G.TrackerCore.Utils.locatePlayerStatObject(found, name)
+                local val = obj and tonumber(obj.Value) or 0
+                S.start[name], S.last[name], S.total[name], S.ticks[name], S.rate[name] = val, val, 0, curT, 0
+            end
+        else
+            S.target = nil
+        end
+    end) or nil
+
+    -- Function to refresh options for dropdowns dynamically (Display Name only)
+    local function RefreshDropdowns()
+        if not singleTargetDropdown then return end
+        pcall(function()
+            singleTargetDropdown:Add("None")
+            for _, p in ipairs(PlayersRef:GetPlayers()) do
+                if p ~= LocalPlayerRef then
+                    singleTargetDropdown:Add(p.DisplayName)
+                end
+            end
+        end)
+    end
+
+    RefreshDropdowns()
+
+    PlayersRef.PlayerAdded:Connect(function(p)
+        task.wait(1)
+        if p ~= LocalPlayerRef and singleTargetDropdown then
+            pcall(function()
+                singleTargetDropdown:Add(p.DisplayName)
+            end)
+        end
+    end)
+
+    PlayersRef.PlayerRemoving:Connect(function(p)
+        if _G.TrackerCore.SpyState.target == p then
+            _G.TrackerCore.SpyState.target, _G.TrackerCore.SpyState.start, _G.TrackerCore.SpyState.total, _G.TrackerCore.SpyState.last, _G.TrackerCore.SpyState.rate, _G.TrackerCore.SpyState.ticks = nil, {}, {}, {}, {}, {}
+        end
+    end)
+
+    if _G.TrackerCore.SpyTab then
+        for _, name in ipairs(_G.TrackerCore.Config.Stats) do
+            pcall(function() _G.TrackerCore.SpyState.labels[name] = _G.TrackerCore.SpyTab:AddLabel(name .. ": N/A (+0) | M: 0 | H: 0 | D: 0 | W: 0 | MO: 0") end)
+        end
+    end
+
+    ---------------------------------------------------------
+    -- [SECTION 4: UNIFIED POLLED CALCULATION LOOP ENGINE]
+    ---------------------------------------------------------
+    task.spawn(function()
+        while task.wait(0.5) do
+            local currentTime = os.time()
+            local S = _G.TrackerCore.SpyState
+            
+            if S.target and S.target.Parent == PlayersRef then
+                for _, name in ipairs(_G.TrackerCore.Config.Stats) do
+                    local statObj = _G.TrackerCore.Utils.locatePlayerStatObject(S.target, name)
+                    if statObj and S.labels[name] then
+                        local currentVal = tonumber(statObj.Value) or 0
+                        if not S.start[name] then
+                            S.start[name], S.last[name], S.total[name], S.ticks[name], S.rate[name] = currentVal, currentVal, 0, currentTime, 0
+                        end
+
+                        if currentVal < S.last[name] then
+                            S.total[name] = S.total[name] + math.max(S.last[name] - S.start[name], 0)
+                            S.start[name] = currentVal
+                        end
+
+                        local diff = currentVal - S.last[name]
+                        if diff > 0 then
+                            S.rate[name] = diff / math.max(currentTime - S.ticks[name], 1)
+                            S.ticks[name] = currentTime
+                        else
+                            if currentTime - (S.ticks[name] or currentTime) > 60 then
+                                S.rate[name] = math.max((S.rate[name] or 0) * 0.99, 0)
+                                if S.rate[name] < 0.001 then S.rate[name] = 0 end
+                            end
+                        end
+                        S.last[name] = currentVal
+
+                        local gained = S.total[name] + math.max(currentVal - S.start[name], 0)
+                        local r = S.rate[name] or 0
+                        
+                        if gained > 0 then
+                            if r <= 0 then r = gained / math.max(currentTime - S.startTime, 1) end
+                            _G.TrackerCore.Utils.updateLabelText(S.labels[name], string.format(
+                                "%s: %s (+%s) | M: %s | H: %s | D: %s | W: %s | MO: %s",
+                                name, _G.TrackerCore.Utils.formatNumber(currentVal), _G.TrackerCore.Utils.formatNumber(gained),
+                                _G.TrackerCore.Utils.formatNumber(r * 60), 
+                                _G.TrackerCore.Utils.formatNumber(r * 3600), 
+                                _G.TrackerCore.Utils.formatNumber(r * 86400), 
+                                _G.TrackerCore.Utils.formatNumber(r * 604800), 
+                                _G.TrackerCore.Utils.formatNumber(r * 2592000)
+                            ))
+                        else
+                            _G.TrackerCore.Utils.updateLabelText(S.labels[name], string.format("%s: %s (+0) | M: 0 | H: 0 | D: 0 | W: 0 | MO: 0", name, _G.TrackerCore.Utils.formatNumber(currentVal)))
+                        end
+                    end
+                end
+            else
+                for _, name in ipairs(_G.TrackerCore.Config.Stats) do
+                    if S.labels[name] then
+                        _G.TrackerCore.Utils.updateLabelText(S.labels[name], name .. ": N/A (+0) | M: 0 | H: 0 | D: 0 | W: 0 | MO: 0")
+                    end
+                end
+            end
+        end
+    end)
+end
+
+-- [[ MOVE TO TOP: Core Logic Variables ]]
+local player = game.Players.LocalPlayer
+local whitelistFriendsActive = false 
+local TargetInput = ""         
+local WhitelistedPlayers = {}        -- Dictionary mapping UserId -> true
+local MultiInputText = ""          -- Stores the raw comma-separated text string
+
+-- Added Label Variable Support for Elerium V2 Whitelist Display
+local WhitelistDisplayLabel = nil
+
+-- Target Kill List Variables
+local TargetKillListActive = false  -- Toggle state for Loop TP Kill Target List
+local TargetKillPlayers = {}        -- Dictionary mapping UserId -> true for target kill list
+local SpyTargetKillListActive = false -- Toggle state for spying on the target kill list
+
+-- Added Label Variable Support for Elerium V2 Kill List Display
+local KillListDisplayLabel = nil
+
+local LoopKillAllActive = false
+local FastLoopKillAllV2Active = false
+local LoopKilling = false
+local Spectating = false
+
+-- [[ MOVE TO TOP: Helper Function: Find Player by Partial Username OR Nickname/Display Name ]]
+local function GetPlayerByInput(input)
+    if not input or input == "" then return nil end
+    local cleanInput = input:lower():match("^%s*(.-)%s*$") -- Clean leading/trailing spaces
+    if cleanInput == "" then return nil end
+    
+    for _, p in ipairs(game.Players:GetPlayers()) do
+        if p.Name:lower():sub(1, #cleanInput) == cleanInput or p.DisplayName:lower():sub(1, #cleanInput) == cleanInput then
+            return p
+        end
+    end
+    return nil
+end
+
+-- [[ MOVE TO TOP: Helper Function: Update Whitelist List Label Text for Elerium V2 ]]
+local function UpdateWhitelistLabel()
+    if not WhitelistDisplayLabel then return end
+    
+    local displayNames = {}
+    for userId, _ in pairs(WhitelistedPlayers) do
+        local p = game.Players:GetPlayerByUserId(userId)
+        if p then
+            table.insert(displayNames, p.DisplayName)
+        else
+            table.insert(displayNames, tostring(userId))
+        end
+    end
+    
+    local finalString = "Whitelist: (Empty)"
+    if #displayNames > 0 then
+        finalString = "Whitelist: " .. table.concat(displayNames, ", ")
+    end
+    
+    pcall(function()
+        if type(WhitelistDisplayLabel) == "table" then
+            if WhitelistDisplayLabel.Update then
+                WhitelistDisplayLabel:Update(finalString)
+            elseif WhitelistDisplayLabel.SetText then
+                WhitelistDisplayLabel:SetText(finalString)
+            elseif WhitelistDisplayLabel.Text then
+                WhitelistDisplayLabel.Text = finalString
+            end
+        elseif typeof(WhitelistDisplayLabel) == "Instance" and WhitelistDisplayLabel:IsA("TextLabel") then
+            WhitelistDisplayLabel.Text = finalString
+        end
+    end)
+end
+
+-- [[ MOVE TO TOP: Helper Function: Update Kill List Label Text for Elerium V2 ]]
+local function UpdateKillListLabel()
+    if not KillListDisplayLabel then return end
+    
+    local displayNames = {}
+    for userId, _ in pairs(TargetKillPlayers) do
+        local p = game.Players:GetPlayerByUserId(userId)
+        if p then
+            table.insert(displayNames, p.DisplayName)
+        else
+            table.insert(displayNames, tostring(userId))
+        end
+    end
+    
+    local finalString = "Kill List: (Empty)"
+    if #displayNames > 0 then
+        finalString = "Kill List: " .. table.concat(displayNames, ", ")
+    end
+    
+    pcall(function()
+        if type(KillListDisplayLabel) == "table" then
+            if KillListDisplayLabel.Update then
+                KillListDisplayLabel:Update(finalString)
+            elseif KillListDisplayLabel.SetText then
+                KillListDisplayLabel:SetText(finalString)
+            elseif KillListDisplayLabel.Text then
+                KillListDisplayLabel.Text = finalString
+            end
+        elseif typeof(KillListDisplayLabel) == "Instance" and KillListDisplayLabel:IsA("TextLabel") then
+            KillListDisplayLabel.Text = finalString
+        end
+    end)
+end
+
+-- [[ MOVE TO TOP: Helper Function: Check Whitelist / Friend Status ]]
+local function isWhitelisted(otherPlayer)
+    if not otherPlayer then return false end
+    
+    if WhitelistedPlayers[otherPlayer.UserId] then
+        return true
+    end
+    
+    if whitelistFriendsActive then
+        local success, result = pcall(function()
+            return player:IsFriendsWith(otherPlayer.UserId)
+        end)
+        if success and result then return true end
+    end
+    
+    return false
+end
+
+-- Create tab after vars are ready
+local Tab = window:AddTab("☠️ Auto Kill") -- Name of tab
+
+Tab:AddButton("Server Hop + Auto Kill", function()
+    loadstring(game:HttpGet("https://raw.githubusercontent.com/IVRzHxZ/Farming-Auto-KIll-in-xKyo/refs/heads/main/farmkillsxkyo"))()
+end)
+
+Tab:AddSwitch("Loop TP Auto Kill All", function(Value)
+    LoopKillAllActive = Value
+    if Value then
+        task.spawn(function()
+            local ReplicatedStorage = game:GetService("ReplicatedStorage")
+            
+            while LoopKillAllActive do
+                local myChar = player.Character
+                local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
+                local myHumanoid = myChar and myChar:FindFirstChildOfClass("Humanoid")
+
+                if myChar and myRoot and myHumanoid then
+                    local targetList = game.Players:GetPlayers()
+                    
+                    for _, targetPlayer in ipairs(targetList) do
+                        if not LoopKillAllActive then break end
+                        
+                        if targetPlayer ~= player and targetPlayer.Character and not isWhitelisted(targetPlayer) then
+                            local tRoot = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
+                            local timeSpent = 0
+                            
+                            while LoopKillAllActive and tRoot and targetPlayer.Parent == game.Players and timeSpent < 0.2 do
+                                myChar = player.Character
+                                myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
+                                myHumanoid = myChar and myChar:FindFirstChildOfClass("Humanoid")
+                                
+                                if not (myChar and myRoot and myHumanoid) then break end
+                                
+                                myRoot.CFrame = tRoot.CFrame * CFrame.new(0, 0, 3)
+                                
+                                local tool = myChar:FindFirstChild("Punch")
+                                if not tool then
+                                    local backpack = player:FindFirstChild("Backpack")
+                                    local bpTool = backpack and backpack:FindFirstChild("Punch")
+                                    if bpTool then
+                                        myHumanoid:EquipTool(bpTool)
+                                        tool = bpTool
+                                    end
+                                end
+                                
+                                if tool then
+                                    tool:Activate()
+                                end
+                                
+                                local remotes = ReplicatedStorage:FindFirstChild("RemotesEvent")
+                                if remotes and remotes:FindFirstChild("SizeChanged") then
+                                    remotes.SizeChanged:FireServer(1)
+                                end
+                                
+                                task.wait(0.05)
+                                timeSpent = timeSpent + 0.05 
+                            end
+                        end
+                    end
+                end
+                task.wait(0.1) 
+            end
+        end)
+    end
+end)
+
+-- [[ SINGLE TARGET DROPDOWN ]]
+local singleTargetDropdown = Tab:AddDropdown("Target Player", function(text)
+    TargetInput = text
+end)
+
+-- Function to refresh options for dropdowns dynamically (Display Name only)
+local function RefreshDropdowns()
+    pcall(function()
+        for _, p in ipairs(game.Players:GetPlayers()) do
+            if p ~= player then
+                singleTargetDropdown:Add(p.DisplayName)
+            end
+        end
+    end)
+end
+
+RefreshDropdowns()
+
+game.Players.PlayerAdded:Connect(function(p)
+    task.wait(1)
+    if p ~= player then
+        singleTargetDropdown:Add(p.DisplayName)
+    end
+end)
+
+Tab:AddSwitch("TP Kill Target", function(state)
+    LoopKilling = state
+    if LoopKilling then
+        task.spawn(function()
+            while LoopKilling do
+                local target = GetPlayerByInput(TargetInput)
+                
+                if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") and 
+                    player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                    
+                    player.Character.HumanoidRootPart.CFrame = target.Character.HumanoidRootPart.CFrame * CFrame.new(0, 0, 3)
+                    
+                    local tool = player.Character:FindFirstChild("Punch")
+                    if not tool then
+                        local backpackTool = player:FindFirstChild("Backpack") and player.Backpack:FindFirstChild("Punch")
+                        if backpackTool then
+                            player.Character.Humanoid:EquipTool(backpackTool)
+                            tool = backpackTool
+                        end
+                    end
+                    
+                    if tool then
+                        tool:Activate() 
+                    end
+                end
+                task.wait(0.01) 
+            end
+        end)
+    end
+end)
+
+Tab:AddSwitch("Spy Target", function(state)
+    Spectating = state
+    local camera = workspace.CurrentCamera
+    
+    if state then
+        task.spawn(function()
+            while Spectating do
+                local target = GetPlayerByInput(TargetInput)
+                if target and target.Character and target.Character:FindFirstChild("Humanoid") then
+                    camera.CameraSubject = target.Character.Humanoid
+                else
+                    if player.Character and player.Character:FindFirstChild("Humanoid") then
+                        camera.CameraSubject = player.Character.Humanoid
+                    end
+                end
+                task.wait(0.1)
+            end
+        end)
+    else
+        if player.Character and player.Character:FindFirstChild("Humanoid") then
+            camera.CameraSubject = player.Character.Humanoid
+        end
+    end
+end)
+
+Tab:AddLabel("~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
+
+-- [[ UPDATED: Target Kill List Features ]]
+
+-- Kill List UI Label Display (Elerium V2)
+KillListDisplayLabel = Tab:AddLabel("Kill List: (Empty)")
+
+-- [[ ADD TO TARGET KILL LIST DROPDOWN ]]
+local targetKillDropdown = Tab:AddDropdown("Add To Target Kill List", function(text)
+    local target = GetPlayerByInput(text)
+    if target then
+        TargetKillPlayers[target.UserId] = true
+        print("[TARGET KILL LIST] Added: " .. target.Name .. " (" .. target.DisplayName .. ")")
+        UpdateKillListLabel()
+    end
+end)
+
+-- Function to refresh target kill dropdown options dynamically (Display Name only)
+local function RefreshTargetKillDropdown()
+    pcall(function()
+        for _, p in ipairs(game.Players:GetPlayers()) do
+            if p ~= player then
+                targetKillDropdown:Add(p.DisplayName)
+            end
+        end
+    end)
+end
+
+RefreshTargetKillDropdown()
+
+game.Players.PlayerAdded:Connect(function(p)
+    task.wait(1)
+    if p ~= player then
+        targetKillDropdown:Add(p.DisplayName)
+    end
+end)
+
+Tab:AddButton("Clear All Target Kill List", function()
+    TargetKillPlayers = {}
+    print("[TARGET KILL LIST] Target Kill List cleared completely.")
+    UpdateKillListLabel()
+end)
+
+Tab:AddSwitch("TP Kill Target List", function(Value)
+    TargetKillListActive = Value
+    if Value then
+        task.spawn(function()
+            local ReplicatedStorage = game:GetService("ReplicatedStorage")
+            
+            while TargetKillListActive do
+                local myChar = player.Character
+                local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
+                local myHumanoid = myChar and myChar:FindFirstChildOfClass("Humanoid")
+
+                if myChar and myRoot and myHumanoid then
+                    for userId, _ in pairs(TargetKillPlayers) do
+                        if not TargetKillListActive then break end
+                        
+                        local targetPlayer = game.Players:GetPlayerByUserId(userId)
+                        
+                        if targetPlayer and targetPlayer ~= player and targetPlayer.Character and not isWhitelisted(targetPlayer) then
+                            local tRoot = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
+                            local tHumanoid = targetPlayer.Character:FindFirstChild("Humanoid")
+                            local timeSpent = 0
+                            
+                            while TargetKillListActive and tRoot and tHumanoid and tHumanoid.Health > 0 and targetPlayer.Parent == game.Players and timeSpent < 0.5 do
+                                myChar = player.Character
+                                myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
+                                myHumanoid = myChar and myChar:FindFirstChildOfClass("Humanoid")
+                                
+                                if not (myChar and myRoot and myHumanoid) then break end
+                                
+                                myRoot.CFrame = tRoot.CFrame * CFrame.new(0, 0, 3)
+                                
+                                local tool = myChar:FindFirstChild("Punch")
+                                if not tool then
+                                    local backpack = player:FindFirstChild("Backpack")
+                                    local bpTool = backpack and backpack:FindFirstChild("Punch")
+                                    if bpTool then
+                                        myHumanoid:EquipTool(bpTool)
+                                        tool = bpTool
+                                    end
+                                end
+                                
+                                if tool then
+                                    tool:Activate()
+                                end
+                                
+                                local remotes = ReplicatedStorage:FindFirstChild("RemotesEvent")
+                                if remotes and remotes:FindFirstChild("SizeChanged") then
+                                    pcall(function()
+                                        remotes.SizeChanged:FireServer(1)
+                                    end)
+                                end
+                                
+                                task.wait(0.05)
+                                timeSpent = timeSpent + 0.05
+                            end
+                        end
+                    end
+                end
+                task.wait(0.1)
+            end
+        end)
+    end
+end)
+
+Tab:AddSwitch("Spy Target Kill List", function(state)
+    SpyTargetKillListActive = state
+    local camera = workspace.CurrentCamera
+    
+    if state then
+        task.spawn(function()
+            while SpyTargetKillListActive do
+                local foundTarget = false
+                for userId, _ in pairs(TargetKillPlayers) do
+                    if not SpyTargetKillListActive then break end
+                    local targetPlayer = game.Players:GetPlayerByUserId(userId)
+                    if targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("Humanoid") and targetPlayer.Character.Humanoid.Health > 0 then
+                        camera.CameraSubject = targetPlayer.Character.Humanoid
+                        foundTarget = true
+                        task.wait(3) 
+                    end
+                end
+                
+                if not foundTarget then
+                    if player.Character and player.Character:FindFirstChild("Humanoid") then
+                        camera.CameraSubject = player.Character.Humanoid
+                    end
+                    task.wait(1)
+                end
+            end
+        end)
+    else
+        if player.Character and player.Character:FindFirstChild("Humanoid") then
+            camera.CameraSubject = player.Character.Humanoid
+        end
+    end
+end)
+
+local AutoPunchActive = false
+
+Tab:AddSwitch("Auto Punch", function(Value)
+    AutoPunchActive =Value
+    local player = game.Players.LocalPlayer
+    
+    if Value then
+        task.spawn(function()
+            while AutoPunchActive do
+                local char = player.Character
+                local backpack = player:FindFirstChild("Backpack")
+                local tool = char and char:FindFirstChild("Punch")
+                
+                if not tool and backpack then
+                    local bpTool = backpack:FindFirstChild("Punch")
+                    if bpTool then
+                        local hum = char and char:FindFirstChildOfClass("Humanoid")
+                        if hum then
+                            hum:EquipTool(bpTool)
+                        end
+                    end
+                end
+                
+                if char and char:FindFirstChild("Punch") then
+                    char.Punch:Activate()
+                end
+                
+                task.wait(0.1) 
+            end
+        end)
+    end
+end)
+
+Tab:AddSwitch('Fast Punch', function(state)
+    local LocalPlayer = game:GetService("Players").LocalPlayer
+    
+    if state then
+        _G.punchanim = true
+        
+        -- Clean up any existing connection to prevent thread stacking
+        if FastPunchConnection then 
+            FastPunchConnection:Disconnect() 
+            FastPunchConnection = nil 
+        end
+        
+        -- Start loop
+        FastPunchConnection = game:GetService('RunService').Heartbeat:Connect(function()
+            if _G.punchanim then
+                local Character = LocalPlayer.Character
+                if Character then
+                    local Humanoid = Character:FindFirstChildOfClass('Humanoid')
+                    local PunchTool = LocalPlayer.Backpack:FindFirstChild('Punch') or Character:FindFirstChild('Punch')
+                    
+                    if PunchTool then
+                        local attackTime = PunchTool:FindFirstChild('attackTime')
+                        if attackTime then 
+                            attackTime.Value = 0 
+                        end
+                        
+                        -- Auto equip if tool is in backpack
+                        if Humanoid and PunchTool.Parent ~= Character then 
+                            Humanoid:EquipTool(PunchTool) 
+                        end
+                        
+                        PunchTool:Activate()
+                    end
+                end
+            else
+                if FastPunchConnection then 
+                    FastPunchConnection:Disconnect() 
+                    FastPunchConnection = nil 
+                end
+            end
+        end)
+    else
+        _G.punchanim = false
+        
+        -- Turn off loop safely
+        if FastPunchConnection then 
+            FastPunchConnection:Disconnect() 
+            FastPunchConnection = nil 
+        end
+        
+        -- Reset attack timing to default game mechanics
+        local PunchInBackpack = LocalPlayer.Backpack:FindFirstChild('Punch')
+        local PunchInCharacter = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild('Punch')
+        local TargetPunch = PunchInBackpack or PunchInCharacter
+        
+        if TargetPunch and TargetPunch:FindFirstChild('attackTime') then 
+            TargetPunch.attackTime.Value = 0.35 
+        end
+    end
+end):Set(false)
+
+local whitelistSwitch = Tab:AddSwitch("Whitelist Friends", function(bool)
+    whitelistFriendsActive = bool
+end)
+if whitelistSwitch and whitelistSwitch.Set then whitelistSwitch:Set(false) end
+
+Tab:AddLabel("~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
+
+-- [[ UPDATED: Whitelist List Features ]]
+
+-- Whitelist UI Label Display (Elerium V2)
+WhitelistDisplayLabel = Tab:AddLabel("Whitelist: (Empty)")
+
+Tab:AddTextBox("Type Name Player To Whitelist", function(text)
+    MultiInputText = text
+end, {
+    ["placeholder"] = "e.g. builderman, roblox, player3",
+    ["clear"] = false
+})
+
+Tab:AddButton("Add Whitelist Players", function()
+    if MultiInputText == "" then 
+        print("[WHITELIST] Text box is empty!")
+        return 
+    end
+    
+    for nameSegment in string.gmatch(MultiInputText, "([^,]+)") do
+        local target = GetPlayerByInput(nameSegment)
+        if target then
+            WhitelistedPlayers[target.UserId] = true
+            print("[WHITELIST] Added: " + target.Name + " (" + target.DisplayName + ")")
+        else
+            local cleanName = nameSegment:match("^%s*(.-)%s*$")
+            print("[WHITELIST] Could not find player: '" + cleanName + "'")
+        end
+    end
+    UpdateWhitelistLabel()
+end)
+
+Tab:AddButton("Clear All Whitelist", function()
+    WhitelistedPlayers = {}
+    print("[WHITELIST] Whitelist cleared completely.")
+    UpdateWhitelistLabel()
+end)
+
+local Tab = window:AddTab("⚙️ Misc") -- Name of tab
+
+local misc = Tab:AddFolder("Misc")
+
+-- 4. Server Hop Function Definition
+local function serverHop()
+    local HttpService = game:GetService("HttpService")
+    local TeleportService = game:GetService("TeleportService")
+    local Players = game:GetService("Players")
+    local LocalPlayer = Players.LocalPlayer
+    
+    local placeId = game.PlaceId
+    local serversUrl = "https://games.roblox.com/v1/games/" .. placeId .. "/servers/Public?sortOrder=Asc&limit=100"
+    
+    local success, result = pcall(function()
+        return HttpService:JSONDecode(game:HttpGet(serversUrl))
+    end)
+    
+    if success and result and result.data then
+        for _, server in ipairs(result.data) do
+            -- Ensure the server has room and isn't the one you are currently in
+            if server.playing < server.maxPlayers and server.id ~= game.JobId then
+                pcall(function()
+                    TeleportService:TeleportToPlaceInstance(placeId, server.id, LocalPlayer)
+                end)
+                return -- Stop executing once teleport is initiated
+            end
+        end
+        print("❌ No alternative public servers found.")
+    else
+        warn("⚠️ Failed to fetch server list. Retrying native teleport...")
+        -- Fallback: basic teleport if API lookup is blocked or rate-limited
+        pcall(function()
+            TeleportService:Teleport(placeId, LocalPlayer)
+        end)
+    end
+end
+
+-- 5. Add the Server Hop Button to Elerium
+misc:AddButton("Server Hop", function()
+    print("🔄 Initializing Server Hop...")
+    serverHop()
+end)
+
+-- 4. Rejoin Function Definition
+local function rejoinServer()
+    local TeleportService = game:GetService("TeleportService")
+    local Players = game:GetService("Players")
+    local LocalPlayer = Players.LocalPlayer
+    
+    local placeId = game.PlaceId
+    local jobId = game.JobId
+
+    -- If there's only 1 player in the server, a standard Teleport works best as a fallback
+    if #Players:GetPlayers() <= 1 then
+        pcall(function()
+            TeleportService:Teleport(placeId, LocalPlayer)
+        end)
+    else
+        -- Force a teleport directly back into the current active server instance
+        pcall(function()
+            TeleportService:TeleportToPlaceInstance(placeId, jobId, LocalPlayer)
+        end)
+    end
+end
+
+-- 5. Add the Rejoin Button to Elerium
+misc:AddButton("Rejoin Server", function()
+    print("🔄 Reconnecting to current server...")
+    rejoinServer()
+end)
+
+misc:AddButton("Emotes", function()
+    loadstring(game:HttpGet("https://raw.githubusercontent.com/7yd7/Hub/refs/heads/Branch/GUIS/Emotes.lua"))()
+end)
+
+misc:AddButton("Jerk Tool (R15)", function()
+    loadstring(game:HttpGet("https://pastefy.app/YZoglOyJ/raw"))()
+end)
+
+misc:AddButton("Fly GUI V3", function()
+    -- This executes the external Fly GUI script when the button is clicked
+    loadstring(game:HttpGet("https://raw.githubusercontent.com/XNEOFF/FlyGuiV3/main/FlyGuiV3.txt"))()
+end)
+
+local ClickTPEnabled = false
+local Mouse = game.Players.LocalPlayer:GetMouse()
+-- Changed AddToggle to AddSwitch
+misc:AddSwitch("Click Teleport", function(Value)
+    ClickTPEnabled = Value
+end)
+
+Mouse.Button1Down:Connect(function()
+    if ClickTPEnabled then
+        local character = game.Players.LocalPlayer.Character
+        local root = character and character:FindFirstChild("HumanoidRootPart")
+        if root then
+            root.CFrame = CFrame.new(Mouse.Hit.p + Vector3.new(0, 3, 0))
+        end
+    end
+end)
+
+misc:AddLabel("~~~~~~~~~~~~~")
+
+-- Configuration variables
+local JumpModEnabled = false
+local TargetPower = 50
+local TargetHeight = 7.2
+local Player = game.Players.LocalPlayer
+
+-- AddSwitch using proper structural framework
+local SwitchInstance = misc:AddSwitch("Jump~Power", function(State)
+    JumpModEnabled = State
+    if not State then
+        -- Restore base physics options instantly when disabled
+        pcall(function()
+            local Character = Player.Character
+            if Character then
+                local Humanoid = Character:FindFirstChildOfClass("Humanoid")
+                if Humanoid then
+                    Humanoid.UseJumpPower = true
+                    Humanoid.JumpPower = 50
+                    Humanoid.JumpHeight = 7.2
+                end
+            end
+        end)
+    end
+end)
+
+-- AddSlider utilizing proper Elerium data options
+local SliderInstance = misc:AddSlider("Jump Power Value", function(Value)
+    TargetPower = Value
+    TargetHeight = (Value * 0.144) -- Convert ratio scaling safely
+end, {
+    min = 50,
+    max = 1000
+})
+
+-- Continuous loop ensuring state remains applied
+game:GetService("RunService").RenderStepped:Connect(function()
+    if JumpModEnabled then
+        pcall(function()
+            local Character = Player.Character
+            if Character then
+                local Humanoid = Character:FindFirstChildOfClass("Humanoid")
+                if Humanoid then
+                    -- Forces both values to prevent anti-cheat reset overwrites
+                    Humanoid.UseJumpPower = true
+                    Humanoid.JumpPower = TargetPower
+                    Humanoid.JumpHeight = TargetHeight
+                end
+            end
+        end)
+    end
+end)
+
+-- Global Logic Variables
+local noclipEnabled = false
+local runService = game:GetService("RunService")
+local players = game:GetService("Players")
+local localPlayer = players.LocalPlayer
+
+-- ==========================================
+-- 🛠️ MOVEMENT SECTION (Noclip Logic)
+-- ==========================================
+local noclipConnection
+noclipConnection = runService.Stepped:Connect(function()
+    if noclipEnabled and localPlayer.Character then
+        for _, part in pairs(localPlayer.Character:GetDescendants()) do
+            if part:IsA("BasePart") and part.CanCollide then
+                part.CanCollide = false
+            end
+        end
+    end
+end)
+
+misc:AddSwitch("Noclip", function(state)
+    noclipEnabled = state
+    
+    if not noclipEnabled and localPlayer.Character then
+        for _, part in pairs(localPlayer.Character:GetDescendants()) do
+            if part:IsA("BasePart") then
+                part.CanCollide = true
+            end
+        end
+    end
+end)
+
+-- 1. Switch to Enable/Disable
+misc:AddSwitch("Infinite Jump", function(Value)
+    InfiniteJumpEnabled = Value
+end)
+
+-- 2. The Logic (Listen for Jump Request)
+game:GetService("UserInputService").JumpRequest:Connect(function()
+    if InfiniteJumpEnabled then
+        local player = game.Players.LocalPlayer
+        local character = player.Character
+        local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+        
+        if humanoid then
+            -- Set state to Jumping to allow another jump in mid-air
+            humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+        end
+    end
+end)
+
+-- Variables for control
+getgenv().LoopSpeedEnabled = false
+getgenv().WalkSpeedValue = 16
+
+-- 1. The Switch (Toggle)
+misc:AddSwitch("Loop WalkSpeed", function(bool)
+    getgenv().LoopSpeedEnabled = bool
+    print("Loop Speed is now: ", bool)
+end)
+
+-- 2. The Textbox (Speed Value)
+misc:AddTextBox("Speed Amount", function(text)
+    local num = tonumber(text)
+    if num then
+        getgenv().WalkSpeedValue = num
+    end
+end)
+
+-- 3. The Background Loop
+task.spawn(function()
+    while task.wait() do
+        if getgenv().LoopSpeedEnabled then
+            pcall(function()
+                local char = game.Players.LocalPlayer.Character
+                if char and char:FindFirstChild("Humanoid") then
+                    char.Humanoid.WalkSpeed = getgenv().WalkSpeedValue
+                end
+            end)
+        end
+    end
+end)
+
+local mainTab = Tab:AddFolder("Misc V2")
+
+local function mk(n, c)
+    local g = Instance.new("ScreenGui", game:GetService("Players").LocalPlayer.PlayerGui)
+    g.Name, g.ResetOnSpawn, g.DisplayOrder, g.IgnoreGuiInset = n, false, 9999999, true
+    local f = Instance.new("Frame", g)
+    f.Size, f.BackgroundColor3, f.BorderSizePixel, f.Visible = UDim2.new(1,0,1,0), c, 0, false
+    return f
+end
+
+local bF, wF = mk("B", Color3.new(0,0,0)), mk("W", Color3.new(1,1,1))
+mainTab:AddSwitch("Black Screen", function(s) bF.Visible = s end)
+mainTab:AddSwitch("White Screen", function(s) wF.Visible = s end)
+
+local fb, orig = false, {game:GetService("Lighting").Ambient, game:GetService("Lighting").OutdoorAmbient, game:GetService("Lighting").Brightness, game:GetService("Lighting").ClockTime, game:GetService("Lighting").GlobalShadows}
+task.spawn(function()
+    while task.wait(0.5) do
+        if fb then game:GetService("Lighting").Ambient, game:GetService("Lighting").OutdoorAmbient, game:GetService("Lighting").Brightness, game:GetService("Lighting").ClockTime, game:GetService("Lighting").GlobalShadows = Color3.new(1,1,1), Color3.new(1,1,1), 2, 14, false end
+    end
+end)
+mainTab:AddSwitch("Fullbright", function(s)
+    fb = s
+    if not s then game:GetService("Lighting").Ambient, game:GetService("Lighting").OutdoorAmbient, game:GetService("Lighting").Brightness, game:GetService("Lighting").ClockTime, game:GetService("Lighting").GlobalShadows = unpack(orig) end
+end)
+
+local be, ne, he, c = false, false, false, {}
+
+local function esp(p)
+    if c[p] or p == game:GetService("Players").LocalPlayer then return end
+    local hl = Instance.new("Highlight")
+    hl.FillColor, hl.FillTransparency, hl.OutlineColor = Color3.new(1,0,0), 0.5, Color3.new(1,1,1)
+    
+    local nt = Instance.new("BillboardGui")
+    nt.Size, nt.AlwaysOnTop, nt.ExtentsOffset = UDim2.new(0,200,0,50), true, Vector3.new(0,3,0)
+    local tx = Instance.new("TextLabel", nt)
+    tx.Size, tx.BackgroundTransparency, tx.Text, tx.TextColor3, tx.TextSize, tx.Font, tx.TextStrokeTransparency = UDim2.new(1,0,1,0), 1, p.Name, Color3.new(1,1,1), 14, Enum.Font.SourceSansBold, 0
+
+    local hb = Instance.new("BillboardGui")
+    hb.Size, hb.AlwaysOnTop, hb.ExtentsOffset = UDim2.new(0,5,0,45), true, Vector3.new(-2.2,0.5,0)
+    local bg = Instance.new("Frame", hb)
+    bg.Size, bg.BackgroundColor3, bg.BorderSizePixel = UDim2.new(1,0,1,0), Color3.fromRGB(40,40,40), 0
+    local hm = Instance.new("Frame", bg)
+    hm.Size, hm.Position, hm.AnchorPoint, hm.BackgroundColor3, hm.BorderSizePixel = UDim2.new(1,0,1,0), UDim2.new(0,0,1,0), Vector2.new(0,1), Color3.fromRGB(0,255,0), 0
+
+    c[p] = {H = hl, N = nt, B = hb, M = hm}
+
+    local function up()
+        local ch = p.Character
+        local hd, hu = ch and ch:WaitForChild("Head", 5), ch and ch:WaitForChild("Humanoid", 5)
+        if ch and hd and hu then
+            hl.Parent, hl.Enabled = ch, be
+            nt.Adornee, nt.Parent, nt.Enabled = hd, hd, ne
+            hb.Adornee, hb.Parent, hb.Enabled = hd, hd, he
+            if c[p].Cn then c[p].Cn:Disconnect() end
+            c[p].Cn = hu:GetPropertyChangedSignal("Health"):Connect(function()
+                local pct = math.clamp(hu.Health / hu.MaxHealth, 0, 1)
+                hm.Size = UDim2.new(1, 0, pct, 0)
+                hm.BackgroundColor3 = Color3.fromHSV(pct * 0.35, 1, 1)
+            end)
+        end
+    end
+    p.CharacterAdded:Connect(function() task.wait(0.5) up() end)
+    up()
+end
+
+for _, p in ipairs(game:GetService("Players"):GetPlayers()) do esp(p) end
+game:GetService("Players").PlayerAdded:Connect(esp)
+game:GetService("Players").PlayerRemoving:Connect(function(p)
+    if c[p] then
+        for _, v in pairs(c[p]) do if typeof(v) == "Instance" then v:Destroy() elseif typeof(v) == "RBXScriptConnection" then v:Disconnect() end end
+        c[p] = nil
+    end
+end)
+
+mainTab:AddSwitch("Box ESP", function(s) be = s for _, d in pairs(c) do if d.H then d.H.Enabled = s end end end)
+mainTab:AddSwitch("Player Name ESP", function(s) ne = s for _, d in pairs(c) do if d.N then d.N.Enabled = s end end end)
+mainTab:AddSwitch("Health Bar ESP", function(s) he = s for _, d in pairs(c) do if d.B then d.B.Enabled = s end end end)
+	
+local fps1 = Tab:AddFolder("Misc V3")
+
+	fps1:AddButton('Remove Textures', function()
+		local v1194, v1195, v1196 = pairs(game:GetDescendants())
+		while true do
+			local v1197
+			v1196, v1197 = v1194(v1195, v1196)
+			if v1196 == nil then
+				break
+			end
+			if v1197:IsA('Decal') or v1197:IsA('Texture') then
+				v1197.Transparency = 1
+			end
+		end
+		game:GetService('StarterGui'):SetCore('SendNotification', {
+			Title = 'Performance',
+			Text = 'Textures removed!',
+			Duration = 5,
+		})
+	end)
+	fps1:AddButton('Reduce Graphics', function()
+		settings().Rendering.QualityLevel = Enum.QualityLevel.Level01
+		game:GetService('StarterGui'):SetCore('SendNotification', {
+			Title = 'Performance',
+			Text = 'Graphics reduced!',
+			Duration = 5,
+		})
+	end)
+	fps1:AddButton('Disable Shadows', function()
+		game:GetService('Lighting').GlobalShadows = false
+		game:GetService('StarterGui'):SetCore('SendNotification', {
+			Title = 'Performance',
+			Text = 'Shadows disabled!',
+			Duration = 5,
+		})
+	end)
+	fps1:AddButton('Disable Effects', function()
+		local v1198, v1199, v1200 = pairs(game:GetDescendants())
+		while true do
+			local v1201
+			v1200, v1201 = v1198(v1199, v1200)
+			if v1200 == nil then
+				break
+			end
+			if v1201:IsA('ParticleEmitter') or (v1201:IsA('Smoke') or (v1201:IsA('Fire') or v1201:IsA('Sparkles'))) then
+				v1201.Enabled = false
+			end
+		end
+		local _Lighting2 = game:GetService('Lighting')
+		local v1203, v1204, v1205 = pairs(_Lighting2:GetChildren())
+		while true do
+			local v1206
+			v1205, v1206 = v1203(v1204, v1205)
+			if v1205 == nil then
+				break
+			end
+			if v1206:IsA('BlurEffect') or (v1206:IsA('SunRaysEffect') or (v1206:IsA('ColorCorrectionEffect') or (v1206:IsA('BloomEffect') or v1206:IsA('DepthOfFieldEffect')))) then
+				v1206.Enabled = false
+			end
+		end
+		game:GetService('StarterGui'):SetCore('SendNotification', {
+			Title = 'Performance',
+			Text = 'Effects disabled!',
+			Duration = 5,
+		})
+	end)
+	fps1:AddButton('Simplify Materials', function()
+		local v1207, v1208, v1209 = pairs(game:GetDescendants())
+		while true do
+			local v1210
+			v1209, v1210 = v1207(v1208, v1209)
+			if v1209 == nil then
+				break
+			end
+			if v1210:IsA('BasePart') and not v1210:IsA('MeshPart') then
+				v1210.Material = Enum.Material.SmoothPlastic
+				if not (v1210.Parent and (v1210.Parent:FindFirstChild('Humanoid') or v1210.Parent.Parent:FindFirstChild('Humanoid'))) then
+					v1210.Reflectance = 0
+				end
+			end
+		end
+		game:GetService('StarterGui'):SetCore('SendNotification', {
+			Title = 'Performance',
+			Text = 'Materials simplified!',
+			Duration = 5,
+		})
+	end)
+fps1:AddButton('Remove Fog', function()
+		game:GetService('Lighting').FogEnd = 10000000000
+		game:GetService('StarterGui'):SetCore('SendNotification', {
+			Title = 'Performance',
+			Text = 'Fog removed!',
+			Duration = 5,
+		})
+	end)
+	fps1:AddButton('Anti Lag (Advanced)', function()
+		local v1211, v1212, v1213 = pairs(game:GetDescendants())
+		while true do
+			local v1214
+			v1213, v1214 = v1211(v1212, v1213)
+			if v1213 == nil then
+				break
+			end
+			if v1214:IsA('Decal') or v1214:IsA('Texture') then
+				v1214:Destroy()
+			end
+		end
+		local _Terrain = workspace:FindFirstChildOfClass('Terrain')
+		if _Terrain then
+			_Terrain.WaterWaveSize = 0
+			_Terrain.WaterWaveSpeed = 0
+			_Terrain.WaterReflectance = 0
+			_Terrain.WaterTransparency = 1
+			_Terrain.Decorations = false
+		end
+		local v1216, v1217, v1218 = pairs(workspace:GetDescendants())
+		while true do
+			local v1219
+			v1218, v1219 = v1216(v1217, v1218)
+			if v1218 == nil then
+				break
+			end
+			if v1219:IsA('Explosion') or v1219:IsA('Debris') then
+				v1219:Destroy()
+			elseif v1219:IsA('BasePart') and v1219.Name:lower():find('debris') then
+				v1219:Destroy()
+			end
+		end
+		local v1220, v1221, v1222 = pairs(game:GetDescendants())
+		while true do
+			local v1223
+			v1222, v1223 = v1220(v1221, v1222)
+			if v1222 == nil then
+				break
+			end
+			if v1223:IsA('PointLight') or (v1223:IsA('SurfaceLight') or v1223:IsA('SpotLight')) then
+				v1223.Enabled = false
+			end
+		end
+		local v1224, v1225, v1226 = pairs(workspace:GetDescendants())
+		while true do
+			local v1227
+			v1226, v1227 = v1224(v1225, v1226)
+			if v1226 == nil then
+				break
+			end
+			if v1227:IsA('Sound') then
+				v1227:Stop()
+			end
+		end
+		print('Anti-Lag Activated: Textures, lighting, sounds, and effects removed.')
+	end)
+	fps1:AddButton('Ultra FPS Booster', function()
+		settings().Rendering.QualityLevel = Enum.QualityLevel.Level01
+		settings().Rendering.MeshPartDetailLevel = Enum.MeshPartDetailLevel.Level01
+		settings().Rendering.EagerBulkExecution = true
+		settings().Rendering.ReloadAssets = false
+		local _Lighting3 = game:GetService('Lighting')
+		_Lighting3.GlobalShadows = false
+		_Lighting3.FogEnd = 10000000000
+		_Lighting3.Brightness = 0
+		_Lighting3.EnvironmentDiffuseScale = 0
+		_Lighting3.EnvironmentSpecularScale = 0
+		local v1229, v1230, v1231 = ipairs(game:GetDescendants())
+		while true do
+			local v1232
+			v1231, v1232 = v1229(v1230, v1231)
+			if v1231 == nil then
+				break
+			end
+			if v1232:IsA('ParticleEmitter') or (v1232:IsA('Trail') or (v1232:IsA('Smoke') or (v1232:IsA('Fire') or v1232:IsA('Sparkles')))) then
+				v1232:Destroy()
+			elseif v1232:IsA('PointLight') or (v1232:IsA('SpotLight') or v1232:IsA('SurfaceLight')) then
+				v1232.Enabled = false
+			end
+		end
+		local v1233, v1234, v1235 = pairs(game:GetDescendants())
+		while true do
+			local v1236
+			v1235, v1236 = v1233(v1234, v1235)
+			if v1235 == nil then
+				break
+			end
+			if v1236:IsA('Sound') then
+				v1236:Stop()
+				v1236.Volume = 0
+			end
+		end
+		local v1237, v1238, v1239 = ipairs(game:GetDescendants())
+		while true do
+			local v1240
+			v1239, v1240 = v1237(v1238, v1239)
+			if v1239 == nil then
+				break
+			end
+			if v1240:IsA('Decal') or v1240:IsA('Texture') then
+				v1240:Destroy()
+			end
+		end
+		local _Terrain2 = workspace:FindFirstChildOfClass('Terrain')
+		if _Terrain2 then
+			_Terrain2.WaterWaveSize = 0
+			_Terrain2.WaterWaveSpeed = 0
+			_Terrain2.WaterReflectance = 0
+			_Terrain2.WaterTransparency = 1
+			_Terrain2.Decorations = false
+		end
+		local _LocalPlayer60 = game.Players.LocalPlayer
+		local _PlayerGui3 = _LocalPlayer60:FindFirstChild('PlayerGui')
+		if _PlayerGui3 then
+			local v1244, v1245, v1246 = ipairs(_PlayerGui3:GetDescendants())
+			while true do
+				local v1247
+				v1246, v1247 = v1244(v1245, v1246)
+				if v1246 == nil then
+					break
+				end
+				if v1247:IsA('TextLabel') or (v1247:IsA('ImageLabel') or v1247:IsA('ImageButton')) then
+					v1247.Visible = false
+				end
+			end
+		end
+		local v1248, v1249, v1250 = ipairs(_LocalPlayer60.Character:GetChildren())
+		while true do
+			local v1251
+			v1250, v1251 = v1248(v1249, v1250)
+			if v1250 == nil then
+				break
+			end
+			if v1251:IsA('Accessory') or v1251:IsA('Clothing') then
+				v1251:Destroy()
+			end
+		end
+		local _Humanoid8 = _LocalPlayer60.Character:FindFirstChildWhichIsA('Humanoid')
+		if _Humanoid8 then
+			local v1253, v1254, v1255 = pairs(_Humanoid8:GetPlayingAnimationTracks())
+			while true do
+				local v1256
+				v1255, v1256 = v1253(v1254, v1255)
+				if v1255 == nil then
+					break
+				end
+				v1256:Stop()
+			end
+		end
+		print('Ultra FPS Boost applied. Maximum rendering and resource optimization complete.')
+	end)
+	fps1:AddButton('Full Optimization', function()
+		local v1257, v1258, v1259 = pairs(game:GetDescendants())
+		while true do
+			local v1260
+			v1259, v1260 = v1257(v1258, v1259)
+			if v1259 == nil then
+				break
+			end
+			if v1260:IsA('ParticleEmitter') or (v1260:IsA('Smoke') or (v1260:IsA('Fire') or v1260:IsA('Sparkles'))) then
+				v1260.Enabled = false
+			end
+		end
+		local _Lighting4 = game:GetService('Lighting')
+		_Lighting4.GlobalShadows = false
+		_Lighting4.FogEnd = 9000000000
+		_Lighting4.Brightness = 0
+		settings().Rendering.QualityLevel = 1
+		local v1262, v1263, v1264 = pairs(game:GetDescendants())
+		while true do
+			local v1265
+			v1264, v1265 = v1262(v1263, v1264)
+			if v1264 == nil then
+				break
+			end
+			if v1265:IsA('Decal') or v1265:IsA('Texture') then
+				v1265.Transparency = 1
+			elseif v1265:IsA('BasePart') and not v1265:IsA('MeshPart') then
+				v1265.Material = Enum.Material.SmoothPlastic
+				if not (v1265.Parent and (v1265.Parent:FindFirstChild('Humanoid') or v1265.Parent.Parent:FindFirstChild('Humanoid'))) then
+					v1265.Reflectance = 0
+				end
+			end
+		end
+		local v1266, v1267, v1268 = pairs(_Lighting4:GetChildren())
+		while true do
+			local v1269
+			v1268, v1269 = v1266(v1267, v1268)
+			if v1268 == nil then
+				break
+			end
+			if v1269:IsA('BlurEffect') or (v1269:IsA('SunRaysEffect') or (v1269:IsA('ColorCorrectionEffect') or (v1269:IsA('BloomEffect') or v1269:IsA('DepthOfFieldEffect')))) then
+				v1269.Enabled = false
+			end
+		end
+		game:GetService('StarterGui'):SetCore('SendNotification', {
+			Title = 'Optimization',
+			Text = 'Full optimization applied!',
+			Duration = 5,
+		})
+	end)
+
+    local msud = Tab:AddFolder("Misc V4")
+
+    -- God Mode Toggle
+local godModeToggle = false
+msud:AddSwitch("God Mode (Brawl)", function(State)
+    godModeToggle = State
+    if State then
+        task.spawn(function()
+            while godModeToggle do
+                game:GetService("ReplicatedStorage").rEvents.brawlEvent:FireServer("joinBrawl")
+                task.wait(0)
+            end
+        end)
+    end
+end)
+
+-- Auto Join Brawl Toggle
+local autoJoinToggle = false
+msud:AddSwitch("Auto Join Brawl", function(State)
+    autoJoinToggle = State
+    if State then
+        task.spawn(function()
+            while autoJoinToggle do
+                game:GetService("ReplicatedStorage").rEvents.brawlEvent:FireServer("joinBrawl")
+                task.wait(2)
+            end
+        end)
+    end
+end)
+
+    local button = msud:AddButton("Walk Water", function()
+   
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(11, -9, 78)
+    WalkPart.Size = Vector3.new(10000,0,10000)
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-110, -9,-999)
+    WalkPart.Size = Vector3.new(10000,0,10000)
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-110, -9,1999)
+    WalkPart.Size = Vector3.new(10000,0,10000)
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-110, -9,-1999)
+    WalkPart.Size = Vector3.new(10000,0,10000)
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-110, -9,2999)
+    WalkPart.Size = Vector3.new(10000,0,10000)
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-110, -9,-3999)
+    WalkPart.Size = Vector3.new(10000,0,10000)
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-110, -9,4999)
+    WalkPart.Size = Vector3.new(10000,0,10000)
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-110, -9,-5999)
+    WalkPart.Size = Vector3.new(10000,0,10000)
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-110, -9,-6999)
+    WalkPart.Size = Vector3.new(10000,0,10000)
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-110, -9,-7999)
+    WalkPart.Size = Vector3.new(10000,0,10000)
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-110, -9,-8999)
+    WalkPart.Size = Vector3.new(10000,0,10000)
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-110, -9,-9999)
+    WalkPart.Size = Vector3.new(10000,0,10000)
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-110, -9,-10999)
+    WalkPart.Size = Vector3.new(10000,0,10000)
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-110, -9,-11999)
+    WalkPart.Size = Vector3.new(10000,0,10000)
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-110, -9,-12999)
+    WalkPart.Size = Vector3.new(10000,0,10000)
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-110, -9,-13999)
+    WalkPart.Size = Vector3.new(10000,0,10000)
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-110, -9,-14999)
+    WalkPart.Size = Vector3.new(10000,0,10000)
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-110, -9,-15999)
+    WalkPart.Size = Vector3.new(10000,0,10000)
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-110, -9,-16999)
+    WalkPart.Size = Vector3.new(10000,0,10000)
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-110, -9,-17999)
+    WalkPart.Size = Vector3.new(10000,0,10000)
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-110, -9,-18999)
+    WalkPart.Size = Vector3.new(10000,0,10000)
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-110, -9,-19999)
+    WalkPart.Size = Vector3.new(10000,0,10000)
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-110, -9,-20999)
+    WalkPart.Size = Vector3.new(10000,0,10000)
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-110, -9,-21999)
+    WalkPart.Size = Vector3.new(10000,0,10000)
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-110, -9,-22999)
+    WalkPart.Size = Vector3.new(10000,0,10000)
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-110, -9,-23999)
+    WalkPart.Size = Vector3.new(10000,0,10000)
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-8922.482421875, -9.848660469055176, -6233.65380859375)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-1107.2977294921875, - 9.7848615646362305, -4127.03369140625)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-2054.99365234375, -9.43027928471565247, -5135.06201171875)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-3072.01806640625, -9.645418643951416, -6136.02392578125)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-4088.711181640625, -9.43027925491333, -5125.28076171875)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-5100.0576171875, -9.215141296386719, -5128.03369140625)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-6103.42626953125, -9.000000953674316, -5590.5859375)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-7096.3935546875, -9.784859657287598, -6403.66015625)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-9882.7021484375, -9.633520126342773, -5228.537109375)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-8889.23046875, -9.418381690979004, -4767.06689453125)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-7888.4443359375, -9.203240394592285, -4648.048828125)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-6868.951171875, -9.988101005554199, -4124.4384765625)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-5883.841796875, -9.7729620933532715, -4073.54736328125)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-9873.0966796875, -9.26787185668945, -6775.55859375)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-8453.767578125, -9.26786804199219, -7212.89013671875)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-7482.234375, -9.84866714477539, -8082.72021484375)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-6483.5791015625, -9.26786422729492, -9055.9033203125)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-6561.2578125, -9.84867858886719, -10038.5146484375)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    
+    
+    
+    
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(1009.69091796875, -9.11653518676758, 1046.963134765625)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(2178.023681640625, -9.09156036376953, 287.1599426269531)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(1023.4569091796875, -9.784860134124756, -478.5546569824219)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(1416.96533203125, -9.901395559310913, 2066.506591796875)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(1514.3587646484375, -9.686256408691406, 3077.935791015625)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(1624.8602294921875, -9.47111701965332, 4074.02587890625)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(1687.230712890625, -9.255976676940918, 5069.81640625)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    
+    
+    
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(1655.4146728515625, -9.040838241577148, 6056.37451171875)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(650.4426879882812, -9.8256990909576416, 6532.1982421875)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-347.35028076171875, -9.61055850982666, 6912.1591796875)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(218.79769897460938, -9.395420074462891, 7934.68017578125)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(251.1740264892578, -9.1802825927734375, 8951.5595703125)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(360.1578369140625, -9.9651424884796143, 9967.0107421875)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(488.1932067871094, -9.750001907348633, 10972.189453125)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(569.8875732421875, -9.5348615646362305, 11982.7353515625)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(629.5374755859375, -9.319723129272461, 12985.849609375)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(1664.9771728515625, -9.610558986663818, 7491.61181640625)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(1945.2432861328125, -9.395420551300049, 8507.6533203125)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(904.4902954101562, -9.7848610877990723, -2151.783447265625)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(1890.2633056640625, -9.569720268249512, -2413.07421875)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(2895.560302734375, -9.354581356048584, -2546.12109375)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(3881.858642578125, -9.1394429206848145, -2962.385986328125)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(4874.54833984375, -9.9243016242980957, -3218.8798828125)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(5892.513671875, -9.709161758422852, -3338.171875)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(6886.39990234375, -9.505979061126709, -3488.1533203125)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(7863.33056640625, -9.290840148925781, -3597.61279296875)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    
+    
+    
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(8840.2548828125, -9.075700759887695, -3711.208740234375)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(9838.98046875, -9.8605616092681885, -3811.1064453125)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(10812.9287109375, -9.645423412322998, -3987.937744140625)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(11798.421875, -9.4302849769592285, -4059.906494140625)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(12794.8408203125, -9.215145587921143, -4103.353515625)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(13782.353515625, -9.000005722045898, -4253.642578125)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(14800.7666015625, -9.7848663330078125, -4368.7177734375)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(15813.6171875, -9.569726467132568, -4453.31591796875)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(16818.390625, -9.354587078094482, -4569.81396484375)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(17821.248046875, -9.139448642730713, -4737.97509765625)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(18001.896484375, -9.9243087768554688, -3764.74609375)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(17008.357421875, -9.709170341491699, -2794.70751953125)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(16014.57421875, -9.49403190612793, -2500.1083984375)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(18766.751953125, -9.709169387817383, -2759.8818359375)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(19039.708984375, -9.494030475616455, -3743.810546875)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(18948.62890625, -9.494030475616455, -1756.02783203125)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(17940.4921875, -9.2788920402526855, -755.4782104492188)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(18944.34375, -9.063753604888916, -543.2788696289062)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(16963.00390625, -9.063752174377441, -293.4074401855469)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(15998.7353515625, -9.8486130237579346, -1311.015869140625)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(15591.837890625, -9.633473873138428, -296.08660888671875)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(14579.58203125, -9.4183349609375, -991.3533935546875)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(14294.275390625, -9.203196048736572, -221.879150390625)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(13372.7236328125, -9.9880566596984863, 73.62410736083984)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(12783.056640625, -9.093517303466797, -952.5441284179688)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(2003.5675048828125, -9.569721221923828, -1103.451416015625)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(2978.824951171875, -9.354583263397217, -1012.9195556640625)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(3944.885986328125, -9.139444351196289, -958.9783935546875)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(4917.93212890625, -9.9243054389953613, -1106.58837890625)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(5321.544921875, -9.709166526794434, -1851.941162109375)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(2894.729736328125, -9.9243032932281494, -3897.88720703125)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(1880.724609375, -9.709164142608643, -4258.2509765625)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-1643.215576171875, -9.569722652435303, -3132.36572265625)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-1772.5018310546875, -9.354584217071533, -2139.459716796875)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-1665.8314208984375, -9.139444828033447, -1128.0208740234375)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-1673.664794921875, -9.9243054389953613, -176.67430114746094)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-1895.2357177734375, -9.709166526794434, 789.939697265625)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-1991.6993408203125, -9.494027614593506, 1789.4617919921875)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-2148.386962890625, -9.278889179229736, 2777.50146484375)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-2334.718505859375, -9.06374979019165, 3752.33056640625)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-2430.8857421875, -9.8486104011535645, 4750.89208984375)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-2477.38427734375, -9.633471488952637, 5754.65625)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-1474.8240966796875, -9.418332576751709, 4993.744140625)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-1239.12744140625, -9.203193664550781, 4206.31005859375)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-1682.2164306640625, -9.418331623077393, 6633.03125)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-1427.5582275390625, -9.203193187713623, 7548.80224609375)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-3823.29248046875, -9.063750267028809, 1757.0218505859375)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-4112.26171875, -9.848611354827881, 2757.71484375)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-4299.38330078125, -9.633472919464111, 3713.58056640625)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-4433.6865234375, -9.4183349609375, 4715.2236328125)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-4646.71728515625, -9.203195571899414, 5683.84765625)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-3911.37353515625, -9.988056182861328, 6502.482421875)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-3161.617431640625, -9.772918224334717, 6943.85986328125)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-2052.14599609375, -9.9880542755126953, 8546.2861328125)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-1400.4658203125, -9.772915363311768, 9297.806640625)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-1190.1282958984375, -9.4422254264354706, 10259.5078125)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(2187.53564453125, -9.180280685424805, 9414.32421875)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(2896.7841796875, -9.180281639099121, 7566.1171875)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(3187.329345703125, -9.9651424884796143, 6555.640625)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(3379.880615234375, -9.750005722045898, 5558.48876953125)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(3961.218017578125, -9.754025459289551, 6907.60400390625)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(3976.142822265625, -9.538886547088623, 7871.6318359375)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-3126.83544921875, -9.84867262840271, 802.1668090820312)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-3662.20703125, -9.633533477783203, -80.66658020019531)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-3609.484130859375, -9.418395519256592, -1017.3029174804688)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-3753.300537109375, -9.2032551765441895, -1995.7613525390625)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-4743.466796875, -9.9881160259246826, -2393.3125)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-5736.89892578125, -9.772977828979492, -2010.5301513671875)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-4006.782958984375, -9.772977352142334, -3332.644287109375)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-3065.00146484375, -9.557837963104248, -3415.263916015625)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-4635.92431640625, -9.418395519256592, -103.13423919677734)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-5439.66796875, -9.203256607055664, 866.9227294921875)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-5770.49462890625, -9.9881179332733154, 1845.7347412109375)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-5798.58203125, -9.772978782653809, 2813.786376953125)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-6413.759765625, -9.9881181716918945, 45.978721618652344)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-7281.08837890625, -9.342700004577637, -2053.28173828125)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-5939.85009765625, -9.557838439941406, -2980.478515625)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(3151.140380859375, -9.8764214515686035, 645.57568359375)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(4175.984375, -9.661282062530518, 688.4006958007812)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(3677.688232421875, -9.44614315032959, 1697.672607421875)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(2702.431640625, -9.231003761291504, 2118.501953125)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(3402.743896484375, -9.015864849090576, 3122.62060546875)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(3311.645263671875, -9.800727367401123, 4067.2041015625)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(4368.765625, -9.800727128982544, 3317.60009765625)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(4876.06005859375, -9.585587978363037, 4320.9013671875)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(5258.15771484375, -9.370449542999268, 5299.39990234375)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(5620.71923828125, -9.155311584472656, 6254.36181640625)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(5176.56591796875, -9.585587978363037, 2400.698486328125)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(6081.796875, -9.370450019836426, 3295.412109375)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(5741.1318359375, -9.370449066162109, 1432.1351318359375)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(5813.77685546875, -9.155310153961182, 415.4798889160156)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(6412.279296875, -9.9401707649230957, -563.8019409179688)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(6898.72900390625, -9.725030422210693, -1527.509765625)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-6474.01318359375, -9.557838439941406, -1076.6319580078125)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-6474.01318359375, -9.557838439941406, -1076.6319580078125)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-6474.01318359375, -9.557838439941406, -1076.6319580078125)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-6474.01318359375, -9.557838439941406, -1076.6319580078125)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-6474.01318359375, -9.557838439941406, -1076.6319580078125)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-6474.01318359375, -9.557838439941406, -1076.6319580078125)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-6474.01318359375, -9.557838439941406, -1076.6319580078125)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-6474.01318359375, -9.557838439941406, -1076.6319580078125)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-6474.01318359375, -9.557838439941406, -1076.6319580078125)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-6474.01318359375, -9.557838439941406, -1076.6319580078125)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-6474.01318359375, -9.557838439941406, -1076.6319580078125)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-6474.01318359375, -9.557838439941406, -1076.6319580078125)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-6474.01318359375, -9.557838439941406, -1076.6319580078125)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-6474.01318359375, -9.557838439941406, -1076.6319580078125)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-6474.01318359375, -9.557838439941406, -1076.6319580078125)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-6474.01318359375, -9.557838439941406, -1076.6319580078125)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-6474.01318359375, -9.557838439941406, -1076.6319580078125)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-6474.01318359375, -9.557838439941406, -1076.6319580078125)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    
+    
+    
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-6474.01318359375, -9.557838439941406, -1076.6319580078125)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-6474.01318359375, -9.557838439941406, -1076.6319580078125)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-6474.01318359375, -9.557838439941406, -1076.6319580078125)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-6474.01318359375, -9.557838439941406, -1076.6319580078125)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-6474.01318359375, -9.557838439941406, -1076.6319580078125)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-6474.01318359375, -9.557838439941406, -1076.6319580078125)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-6474.01318359375, -9.557838439941406, -1076.6319580078125)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-6474.01318359375, -9.557838439941406, -1076.6319580078125)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-6474.01318359375, -9.557838439941406, -1076.6319580078125)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-6474.01318359375, -9.557838439941406, -1076.6319580078125)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-6474.01318359375, -9.557838439941406, -1076.6319580078125)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-6474.01318359375, -9.557838439941406, -1076.6319580078125)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+    
+    
+    
+    
+    local WalkPart = Instance.new("Part")
+    WalkPart.Parent = Game.Workspace
+    WalkPart.Anchored = true
+    WalkPart.Position = Vector3.new(-6474.01318359375, -9.557838439941406, -1076.6319580078125)
+    WalkPart.Size = Vector3.new(20000,0,20000)
+end)
