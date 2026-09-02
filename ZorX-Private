@@ -2056,15 +2056,10 @@ task.spawn(function()
 end)
 
 ---------------------------------------------------------
--- [SECTION 1: LOCAL PLAYER STATS TAB]
+-- [SECTION 1: SHARED DATA & UTILITIES]
 ---------------------------------------------------------
 local Players = game:GetService("Players")
-local LocalPlayer = Players.LocalPlayer
-
-if not LocalPlayer then
-    pcall(function() Players:GetPropertyChangedSignal("LocalPlayer"):Wait() end)
-    LocalPlayer = Players.LocalPlayer or Players.PlayerAdded:Wait()
-end
+local LocalPlayer = Players.LocalPlayer or Players.PlayerAdded:Wait()
 
 if _G.LocalTracker then _G.LocalTracker = nil end
 _G.LocalTracker = {
@@ -2084,12 +2079,18 @@ _G.LocalTracker = {
     Utils = {}
 }
 
-_G.LocalTracker.Utils.updateLabelText = function(name, content)
-    local label = _G.LocalTracker.Labels[name]
-    if not label then return end
-    local ok = pcall(function() label.Text = content end)
-    if not ok then ok = pcall(function() label:SetText(content) end) end
-    if not ok then pcall(function() label:UpdateLabel(content) end) end
+-- Label updating abstraction
+_G.LocalTracker.Utils.updateLabelText = function(labelObj, content)
+    if not labelObj then return end
+    pcall(function()
+        if type(labelObj) == "table" and labelObj.SetText then
+            labelObj:SetText(content)
+        elseif type(labelObj) == "table" and labelObj.Text then
+            labelObj.Text = content
+        elseif typeof(labelObj) == "Instance" then
+            labelObj.Text = content
+        end
+    end)
 end
 
 _G.LocalTracker.Utils.formatNumber = function(value)
@@ -2103,48 +2104,58 @@ _G.LocalTracker.Utils.formatNumber = function(value)
     return string.format("%.1f", value / (10 ^ (index * 3))):gsub("%.0$", "") .. (_G.LocalTracker.Config.Suffixes[index] or "")
 end
 
-_G.LocalTracker.Utils.scanForStatFast = function(statName)
-    if not LocalPlayer then return nil end
-    local lowerTarget = string.lower(statName)
-    local cleanTarget = lowerTarget:gsub("%s+", ""):gsub("_+", "")
+-- Muscle Legends Fast Stat Scanner
+_G.LocalTracker.Utils.scanForStatFast = function(player, statName)
+    if not player then return nil end
+    local lowerTarget = string.lower(statName):gsub("%s+", "")
     
-    local function matches(name)
-        local lName = string.lower(name)
-        local cName = lName:gsub("%s+", ""):gsub("_+", "")
-        return string.find(lName, lowerTarget) or cName == cleanTarget or string.find(cName, cleanTarget)
-    end
-    
-    local classicHubs = {"leaderstats", "leaderstats2", "Stats", "PlayerData", "Data", "Currency"}
-    for i = 1, #classicHubs do
-        local folder = LocalPlayer:FindFirstChild(classicHubs[i])
-        if folder then
-            local children = folder:GetChildren()
-            for j = 1, #children do
-                local child = children[j]
-                if matches(child.Name) and string.find(child.ClassName, "Value") then
-                    return child
-                end
+    -- Check leaderstats (Strength, Durability, Agility, Rebirths)
+    local leaderstats = player:FindFirstChild("leaderstats")
+    if leaderstats then
+        for _, child in ipairs(leaderstats:GetChildren()) do
+            local cleanName = string.lower(child.Name):gsub("%s+", "")
+            if cleanName == lowerTarget or string.find(cleanName, lowerTarget) then
+                if child:IsA("ValueBase") then return child end
             end
         end
     end
 
-    local rootChildren = LocalPlayer:GetChildren()
-    for i = 1, #rootChildren do
-        local child = rootChildren[i]
-        if matches(child.Name) and string.find(child.ClassName, "Value") then
-            return child
-        elseif child:IsA("Folder") or child:IsA("Configuration") then
-            local subChildren = child:GetChildren()
-            for j = 1, #subChildren do
-                local subChild = subChildren[j]
-                if matches(subChild.Name) and string.find(subChild.ClassName, "Value") then
-                    return subChild
-                end
+    -- Check Character Model (Karma)
+    local char = player.Character
+    if char then
+        for _, child in ipairs(char:GetChildren()) do
+            local cleanName = string.lower(child.Name):gsub("%s+", "")
+            if cleanName == lowerTarget or string.find(cleanName, lowerTarget) then
+                if child:IsA("ValueBase") then return child end
             end
         end
     end
-    
-    return nil
+
+    -- Check Root Player Folders & Data Containers
+    for _, child in ipairs(player:GetChildren()) do
+        local cleanName = string.lower(child.Name):gsub("%s+", "")
+        if (cleanName == lowerTarget or string.find(cleanName, lowerTarget)) and child:IsA("ValueBase") then
+            return child
+        end
+    end
+
+    -- Deep Recursive Search
+    local function deepSearch(parent, depth)
+        if depth > 3 then return nil end
+        for _, child in ipairs(parent:GetChildren()) do
+            local cleanName = string.lower(child.Name):gsub("%s+", "")
+            if (cleanName == lowerTarget or string.find(cleanName, lowerTarget)) and child:IsA("ValueBase") then
+                return child
+            end
+            if child:IsA("Folder") or child:IsA("Configuration") or child:IsA("Model") then
+                local found = deepSearch(child, depth + 1)
+                if found then return found end
+            end
+        end
+        return nil
+    end
+
+    return deepSearch(player, 1)
 end
 
 _G.LocalTracker.Utils.computeAndRenderStat = function(name, currentVal)
@@ -2187,7 +2198,7 @@ _G.LocalTracker.Utils.computeAndRenderStat = function(name, currentVal)
     local activeRate = _G.LocalTracker.Rates[name] or 0
     
     if gained > 0 and activeRate > 0 then
-        _G.LocalTracker.Utils.updateLabelText(name, string.format(
+        _G.LocalTracker.Utils.updateLabelText(_G.LocalTracker.Labels[name], string.format(
             "%s: %s (+%s) | M: %s | H: %s | D: %s | W: %s | MO: %s",
             name, formattedCurrent, _G.LocalTracker.Utils.formatNumber(gained),
             _G.LocalTracker.Utils.formatNumber(activeRate * 60), 
@@ -2197,13 +2208,17 @@ _G.LocalTracker.Utils.computeAndRenderStat = function(name, currentVal)
             _G.LocalTracker.Utils.formatNumber(activeRate * 2592000)
         ))
     else
-        _G.LocalTracker.Utils.updateLabelText(name, string.format("%s: %s (+0) | M: 0 | H: 0 | D: 0 | W: 0 | MO: 0", name, formattedCurrent))
+        _G.LocalTracker.Utils.updateLabelText(_G.LocalTracker.Labels[name], string.format("%s: %s (+0) | M: 0 | H: 0 | D: 0 | W: 0 | MO: 0", name, formattedCurrent))
     end
 end
 
 _G.LocalTracker.Utils.bindObjectSignals = function(name, obj)
     _G.LocalTracker.CachedObjects[name] = obj
-    _G.LocalTracker.StartStats[name] = tonumber(obj.Value) or 0
+    
+    if not _G.LocalTracker.StartStats[name] or _G.LocalTracker.StartStats[name] == 0 then
+        _G.LocalTracker.StartStats[name] = tonumber(obj.Value) or 0
+    end
+    
     _G.LocalTracker.LastValues[name] = tonumber(obj.Value) or 0
     _G.LocalTracker.TotalGained[name] = _G.LocalTracker.TotalGained[name] or 0
     _G.LocalTracker.LastUpdates[name] = os.time()
@@ -2217,19 +2232,22 @@ _G.LocalTracker.Utils.bindObjectSignals = function(name, obj)
         _G.LocalTracker.Utils.computeAndRenderStat(name, tonumber(newVal) or 0)
     end)
     
-    _G.LocalTracker.Utils.computeAndRenderStat(name, _G.LocalTracker.StartStats[name])
+    _G.LocalTracker.Utils.computeAndRenderStat(name, tonumber(obj.Value) or 0)
 end
 
-_G.LocalTracker.TrackerTab = nil
-pcall(function() _G.LocalTracker.TrackerTab = window:AddTab("Stats 📊") end)
+---------------------------------------------------------
+-- [SECTION 2: TAB 1 - LOCAL STATS & SESSION TIME]
+---------------------------------------------------------
+local statsTab = window:AddTab("Stats 📊")
+statsTab:Show()
 
-_G.LocalTracker.ClockLabel = _G.LocalTracker.TrackerTab and _G.LocalTracker.TrackerTab:AddLabel("Session Time: 00:00:00") or nil
+_G.LocalTracker.ClockLabel = statsTab:AddLabel("Session Time: 00:00:00")
 
 for i = 1, #_G.LocalTracker.Config.Stats do
     local name = _G.LocalTracker.Config.Stats[i]
     _G.LocalTracker.StartStats[name] = 0
     
-    local foundObj = _G.LocalTracker.Utils.scanForStatFast(name)
+    local foundObj = _G.LocalTracker.Utils.scanForStatFast(LocalPlayer, name)
     local currentText = name .. ": 0 (+0) | M: 0 | H: 0 | D: 0 | W: 0 | MO: 0"
     
     if foundObj then
@@ -2239,260 +2257,166 @@ for i = 1, #_G.LocalTracker.Config.Stats do
         currentText = string.format("%s: %s (+0) | M: 0 | H: 0 | D: 0 | W: 0 | MO: 0", name, _G.LocalTracker.Utils.formatNumber(initialVal))
     end
     
-    if _G.LocalTracker.TrackerTab then
-        pcall(function() _G.LocalTracker.Labels[name] = _G.LocalTracker.TrackerTab:AddLabel(currentText) end)
-    end
+    _G.LocalTracker.Labels[name] = statsTab:AddLabel(currentText)
     
     if foundObj then
         _G.LocalTracker.Utils.bindObjectSignals(name, foundObj)
     end
 end
 
+---------------------------------------------------------
+-- [SECTION 3: TAB 2 - SPY STATS PLAYER]
+---------------------------------------------------------
+if _G.SpyCore then _G.SpyCore = nil end
+_G.SpyCore = {
+    SpyState = { target = nil, startTime = os.time(), labels = {}, start = {}, total = {}, last = {}, rate = {}, ticks = {} }
+}
+
+local spyTab = window:AddTab("Spy Stats 👁️")
+
+local spyDropdown = spyTab:AddDropdown("Select Player...", function(selectedName)
+    local S = _G.SpyCore.SpyState
+    if selectedName == "None" or selectedName == "" then
+        S.target, S.start, S.total, S.last, S.rate, S.ticks = nil, {}, {}, {}, {}, {}
+        return
+    end
+    
+    local foundPlayer = nil
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p.DisplayName == selectedName or p.Name == selectedName then
+            foundPlayer = p
+            break
+        end
+    end
+
+    if foundPlayer then
+        S.target, S.startTime, S.start, S.total, S.last, S.rate, S.ticks = foundPlayer, os.time(), {}, {}, {}, {}, {}
+        local curT = os.time()
+        for _, name in ipairs(_G.LocalTracker.Config.Stats) do
+            local obj = _G.LocalTracker.Utils.scanForStatFast(foundPlayer, name)
+            local val = obj and tonumber(obj.Value) or 0
+            S.start[name], S.last[name], S.total[name], S.ticks[name], S.rate[name] = val, val, 0, curT, 0
+        end
+    else
+        S.target = nil
+    end
+end)
+
+spyDropdown:Add("None")
+for _, p in ipairs(Players:GetPlayers()) do
+    if p ~= LocalPlayer then
+        spyDropdown:Add(p.DisplayName)
+    end
+end
+
+-- Refresh players on join/leave
+Players.PlayerAdded:Connect(function(p)
+    task.wait(1)
+    if p ~= LocalPlayer and spyDropdown then
+        pcall(function() spyDropdown:Add(p.DisplayName) end)
+    end
+end)
+
+for _, name in ipairs(_G.LocalTracker.Config.Stats) do
+    _G.SpyCore.SpyState.labels[name] = spyTab:AddLabel(name .. ": N/A (+0) | M: 0 | H: 0 | D: 0 | W: 0 | MO: 0")
+end
+
+---------------------------------------------------------
+-- [SECTION 4: BACKGROUND ENGINES & LOOPS]
+---------------------------------------------------------
+
+-- 1. Rescanner for local player stats
 task.spawn(function()
     while task.wait(1) do
-        local elapsedSeconds = math.max(os.time() - _G.LocalTracker.StartTime, 1)
-        local currentTime = os.time()
-        
-        local hours = math.floor(elapsedSeconds / 3600)
-        local minutes = math.floor((elapsedSeconds % 3600) / 60)
-        local seconds = elapsedSeconds % 60
-        if _G.LocalTracker.ClockLabel then
-            pcall(function() _G.LocalTracker.ClockLabel.Text = string.format("Session Time: %02d:%02d:%02d", hours, minutes, seconds) end)
-        end
-        
         for i = 1, #_G.LocalTracker.Config.Stats do
             local name = _G.LocalTracker.Config.Stats[i]
-            local obj = _G.LocalTracker.CachedObjects[name]
-            if obj then
-                local lastActive = _G.LocalTracker.LastUpdates[name] or currentTime
-                if currentTime - lastActive > 60 then
-                    _G.LocalTracker.Rates[name] = math.max((_G.LocalTracker.Rates[name] or 0) * 0.99, 0)
-                    if _G.LocalTracker.Rates[name] < 0.001 then _G.LocalTracker.Rates[name] = 0 end
-                    _G.LocalTracker.Utils.computeAndRenderStat(name, tonumber(obj.Value) or 0)
+            local currentCached = _G.LocalTracker.CachedObjects[name]
+            
+            if not currentCached or not currentCached.Parent then
+                local obj = _G.LocalTracker.Utils.scanForStatFast(LocalPlayer, name)
+                if obj then
+                    _G.LocalTracker.Utils.bindObjectSignals(name, obj)
                 end
             end
         end
     end
 end)
 
----------------------------------------------------------
--- [SECTION 2: SHARED UTILITIES & CENTRAL CORES]
----------------------------------------------------------
-do
-    local PlayersRef = game:GetService("Players")
-    local LocalPlayerRef = PlayersRef.LocalPlayer
-
-    if not LocalPlayerRef then
-        pcall(function() PlayersRef:GetPropertyChangedSignal("LocalPlayer"):Wait() end)
-        LocalPlayerRef = PlayersRef.LocalPlayer or PlayersRef.PlayerAdded:Wait()
-    end
-
-    if _G.TrackerCore then _G.TrackerCore = nil end
-    _G.TrackerCore = {
-        Config = {
-            Stats = {"Strength", "Durability", "Rebirths", "Agility", "Kills", "Brawls", "Good Karma", "Evil Karma", "Gems"},
-            Suffixes = {"K", "M", "B", "T", "Qa", "Qi", "Sx", "Sp", "Oc", "No", "Dc", "UDc", "DDc", "TDc", "QaDc", "QiDc", "SxDc", "SpDc", "ODc", "NDc", "Vg"}
-        },
-        SpyState = { target = nil, startTime = os.time(), labels = {}, start = {}, total = {}, last = {}, rate = {}, ticks = {} },
-        Utils = {}
-    }
-
-    _G.TrackerCore.Utils.updateLabelText = function(label, content)
-        if not label then return end
-        local ok = pcall(function() label.Text = content end)
-        if not ok then ok = pcall(function() label:SetText(content) end) end
-        if not ok then pcall(function() label:UpdateLabel(content) end) end
-    end
-
-    _G.TrackerCore.Utils.formatNumber = function(value)
-        if not value or typeof(value) ~= "number" then return "0" end
-        local absVal = math.abs(value)
-        if absVal < 1000 then 
-            return tostring(value < 0 and -math.floor(absVal) or math.floor(absVal)) 
-        end
-        local index = math.floor(math.log10(absVal) / 3)
-        if index > #_G.TrackerCore.Config.Suffixes then index = #_G.TrackerCore.Config.Suffixes end
-        return string.format("%.1f", value / (10 ^ (index * 3))):gsub("%.0$", "") .. (_G.TrackerCore.Config.Suffixes[index] or "")
-    end
-
-    _G.TrackerCore.Utils.locatePlayerStatObject = function(playerInstance, statName)
-        if not playerInstance then return nil end
-        local lowerTarget = string.lower(statName)
-        local cleanTarget = lowerTarget:gsub("%s+", ""):gsub("_+", "")
+-- 2. Session Time Clock Loop
+task.spawn(function()
+    while task.wait(1) do
+        local elapsedSeconds = math.max(os.time() - _G.LocalTracker.StartTime, 1)
+        local hours = math.floor(elapsedSeconds / 3600)
+        local minutes = math.floor((elapsedSeconds % 3600) / 60)
+        local seconds = elapsedSeconds % 60
         
-        local function matches(name)
-            local lName = string.lower(name)
-            local cName = lName:gsub("%s+", ""):gsub("_+", "")
-            return string.find(lName, lowerTarget) or cName == cleanTarget or string.find(cName, cleanTarget)
-        end
+        local formattedTime = string.format("Session Time: %02d:%02d:%02d", hours, minutes, seconds)
+        _G.LocalTracker.Utils.updateLabelText(_G.LocalTracker.ClockLabel, formattedTime)
+    end
+end)
+
+-- 3. Spy Engine Polling Loop
+task.spawn(function()
+    while task.wait(0.5) do
+        local currentTime = os.time()
+        local S = _G.SpyCore.SpyState
         
-        local classicHubs = {"leaderstats", "leaderstats2", "Stats", "PlayerData", "Data", "Currency"}
-        
-        for i = 1, #classicHubs do
-            local folder = playerInstance:FindFirstChild(classicHubs[i])
-            if folder then
-                local children = folder:GetChildren()
-                for j = 1, #children do
-                    local child = children[j]
-                    if matches(child.Name) and string.find(child.ClassName, "Value") then
-                        return child
+        if S.target and S.target.Parent == Players then
+            for _, name in ipairs(_G.LocalTracker.Config.Stats) do
+                local statObj = _G.LocalTracker.Utils.scanForStatFast(S.target, name)
+                local labelObj = S.labels[name]
+                
+                if statObj and labelObj then
+                    local currentVal = tonumber(statObj.Value) or 0
+                    if not S.start[name] then
+                        S.start[name], S.last[name], S.total[name], S.ticks[name], S.rate[name] = currentVal, currentVal, 0, currentTime, 0
+                    end
+
+                    if currentVal < S.last[name] then
+                        S.total[name] = S.total[name] + math.max(S.last[name] - S.start[name], 0)
+                        S.start[name] = currentVal
+                    end
+
+                    local diff = currentVal - S.last[name]
+                    if diff > 0 then
+                        S.rate[name] = diff / math.max(currentTime - S.ticks[name], 1)
+                        S.ticks[name] = currentTime
+                    else
+                        if currentTime - (S.ticks[name] or currentTime) > 60 then
+                            S.rate[name] = math.max((S.rate[name] or 0) * 0.99, 0)
+                            if S.rate[name] < 0.001 then S.rate[name] = 0 end
+                        end
+                    end
+                    S.last[name] = currentVal
+
+                    local gained = S.total[name] + math.max(currentVal - S.start[name], 0)
+                    local r = S.rate[name] or 0
+                    
+                    if gained > 0 then
+                        if r <= 0 then r = gained / math.max(currentTime - S.startTime, 1) end
+                        _G.LocalTracker.Utils.updateLabelText(labelObj, string.format(
+                            "%s: %s (+%s) | M: %s | H: %s | D: %s | W: %s | MO: %s",
+                            name, _G.LocalTracker.Utils.formatNumber(currentVal), _G.LocalTracker.Utils.formatNumber(gained),
+                            _G.LocalTracker.Utils.formatNumber(r * 60), 
+                            _G.LocalTracker.Utils.formatNumber(r * 3600), 
+                            _G.LocalTracker.Utils.formatNumber(r * 86400), 
+                            _G.LocalTracker.Utils.formatNumber(r * 604800), 
+                            _G.LocalTracker.Utils.formatNumber(r * 2592000)
+                        ))
+                    else
+                        _G.LocalTracker.Utils.updateLabelText(labelObj, string.format("%s: %s (+0) | M: 0 | H: 0 | D: 0 | W: 0 | MO: 0", name, _G.LocalTracker.Utils.formatNumber(currentVal)))
                     end
                 end
-            end
-        end
-
-        local rootChildren = playerInstance:GetChildren()
-        for i = 1, #rootChildren do
-            local child = rootChildren[i]
-            if matches(child.Name) and string.find(child.ClassName, "Value") then
-                return child
-            elseif child:IsA("Folder") or child:IsA("Configuration") then
-                local subChildren = child:GetChildren()
-                for j = 1, #subChildren do
-                    local subChild = subChildren[j]
-                    if matches(subChild.Name) and string.find(subChild.ClassName, "Value") then
-                        return subChild
-                    end
-                end
-            end
-        end
-        return nil
-    end
-
-    ---------------------------------------------------------
-    -- [SECTION 3: SPY PLAYER INTERFACE FIELDS]
-    ---------------------------------------------------------
-    _G.TrackerCore.SpyTab = nil
-    pcall(function() _G.TrackerCore.SpyTab = window:AddTab("Spy Stats Player 👁️") end)
-
-    -- [[ SINGLE TARGET DROPDOWN ]]
-    local singleTargetDropdown = _G.TrackerCore.SpyTab and _G.TrackerCore.SpyTab:AddDropdown("Select Player...", function(text)
-        local S = _G.TrackerCore.SpyState
-        if text == "None" or text == "" then
-            S.target, S.start, S.total, S.last, S.rate, S.ticks = nil, {}, {}, {}, {}, {}
-            return
-        end
-        
-        local found = nil
-        for _, p in ipairs(PlayersRef:GetPlayers()) do
-            if p.DisplayName == text or p.Name == text then
-                found = p
-                break
-            end
-        end
-
-        if found then
-            S.target, S.startTime, S.start, S.total, S.last, S.rate, S.ticks = found, os.time(), {}, {}, {}, {}, {}
-            local curT = os.time()
-            for _, name in ipairs(_G.TrackerCore.Config.Stats) do
-                local obj = _G.TrackerCore.Utils.locatePlayerStatObject(found, name)
-                local val = obj and tonumber(obj.Value) or 0
-                S.start[name], S.last[name], S.total[name], S.ticks[name], S.rate[name] = val, val, 0, curT, 0
             end
         else
-            S.target = nil
-        end
-    end) or nil
-
-    -- Function to refresh options for dropdowns dynamically (Display Name only)
-    local function RefreshDropdowns()
-        if not singleTargetDropdown then return end
-        pcall(function()
-            singleTargetDropdown:Add("None")
-            for _, p in ipairs(PlayersRef:GetPlayers()) do
-                if p ~= LocalPlayerRef then
-                    singleTargetDropdown:Add(p.DisplayName)
-                end
-            end
-        end)
-    end
-
-    RefreshDropdowns()
-
-    PlayersRef.PlayerAdded:Connect(function(p)
-        task.wait(1)
-        if p ~= LocalPlayerRef and singleTargetDropdown then
-            pcall(function()
-                singleTargetDropdown:Add(p.DisplayName)
-            end)
-        end
-    end)
-
-    PlayersRef.PlayerRemoving:Connect(function(p)
-        if _G.TrackerCore.SpyState.target == p then
-            _G.TrackerCore.SpyState.target, _G.TrackerCore.SpyState.start, _G.TrackerCore.SpyState.total, _G.TrackerCore.SpyState.last, _G.TrackerCore.SpyState.rate, _G.TrackerCore.SpyState.ticks = nil, {}, {}, {}, {}, {}
-        end
-    end)
-
-    if _G.TrackerCore.SpyTab then
-        for _, name in ipairs(_G.TrackerCore.Config.Stats) do
-            pcall(function() _G.TrackerCore.SpyState.labels[name] = _G.TrackerCore.SpyTab:AddLabel(name .. ": N/A (+0) | M: 0 | H: 0 | D: 0 | W: 0 | MO: 0") end)
-        end
-    end
-
-    ---------------------------------------------------------
-    -- [SECTION 4: UNIFIED POLLED CALCULATION LOOP ENGINE]
-    ---------------------------------------------------------
-    task.spawn(function()
-        while task.wait(0.5) do
-            local currentTime = os.time()
-            local S = _G.TrackerCore.SpyState
-            
-            if S.target and S.target.Parent == PlayersRef then
-                for _, name in ipairs(_G.TrackerCore.Config.Stats) do
-                    local statObj = _G.TrackerCore.Utils.locatePlayerStatObject(S.target, name)
-                    if statObj and S.labels[name] then
-                        local currentVal = tonumber(statObj.Value) or 0
-                        if not S.start[name] then
-                            S.start[name], S.last[name], S.total[name], S.ticks[name], S.rate[name] = currentVal, currentVal, 0, currentTime, 0
-                        end
-
-                        if currentVal < S.last[name] then
-                            S.total[name] = S.total[name] + math.max(S.last[name] - S.start[name], 0)
-                            S.start[name] = currentVal
-                        end
-
-                        local diff = currentVal - S.last[name]
-                        if diff > 0 then
-                            S.rate[name] = diff / math.max(currentTime - S.ticks[name], 1)
-                            S.ticks[name] = currentTime
-                        else
-                            if currentTime - (S.ticks[name] or currentTime) > 60 then
-                                S.rate[name] = math.max((S.rate[name] or 0) * 0.99, 0)
-                                if S.rate[name] < 0.001 then S.rate[name] = 0 end
-                            end
-                        end
-                        S.last[name] = currentVal
-
-                        local gained = S.total[name] + math.max(currentVal - S.start[name], 0)
-                        local r = S.rate[name] or 0
-                        
-                        if gained > 0 then
-                            if r <= 0 then r = gained / math.max(currentTime - S.startTime, 1) end
-                            _G.TrackerCore.Utils.updateLabelText(S.labels[name], string.format(
-                                "%s: %s (+%s) | M: %s | H: %s | D: %s | W: %s | MO: %s",
-                                name, _G.TrackerCore.Utils.formatNumber(currentVal), _G.TrackerCore.Utils.formatNumber(gained),
-                                _G.TrackerCore.Utils.formatNumber(r * 60), 
-                                _G.TrackerCore.Utils.formatNumber(r * 3600), 
-                                _G.TrackerCore.Utils.formatNumber(r * 86400), 
-                                _G.TrackerCore.Utils.formatNumber(r * 604800), 
-                                _G.TrackerCore.Utils.formatNumber(r * 2592000)
-                            ))
-                        else
-                            _G.TrackerCore.Utils.updateLabelText(S.labels[name], string.format("%s: %s (+0) | M: 0 | H: 0 | D: 0 | W: 0 | MO: 0", name, _G.TrackerCore.Utils.formatNumber(currentVal)))
-                        end
-                    end
-                end
-            else
-                for _, name in ipairs(_G.TrackerCore.Config.Stats) do
-                    if S.labels[name] then
-                        _G.TrackerCore.Utils.updateLabelText(S.labels[name], name .. ": N/A (+0) | M: 0 | H: 0 | D: 0 | W: 0 | MO: 0")
-                    end
+            for _, name in ipairs(_G.LocalTracker.Config.Stats) do
+                if S.labels[name] then
+                    _G.LocalTracker.Utils.updateLabelText(S.labels[name], name .. ": N/A (+0) | M: 0 | H: 0 | D: 0 | W: 0 | MO: 0")
                 end
             end
         end
-    end)
-end
+    end
+end)
 
 -- [[ MOVE TO TOP: Core Logic Variables ]]
 local player = game.Players.LocalPlayer
