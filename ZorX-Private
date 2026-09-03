@@ -2030,36 +2030,7 @@ createAutoSellSwitch(crystalsTab, "Plasma Ravager")
 createAutoSellSwitch(crystalsTab, "Titan Reactor")
 createAutoSellSwitch(crystalsTab, "Apex Overlord")
 
-local autoEvolveFolder = crystalsTab:AddFolder("Auto Evolve")
-
-local function createAutoEvolveSwitch(folder, petName)
-    local autoEvolveEnabled = false
-    
-    folder:AddSwitch("Auto Evolve " .. petName, function(state)
-        autoEvolveEnabled = state
-        
-        if autoEvolveEnabled then
-            task.spawn(function()
-                while autoEvolveEnabled do
-                    local args = {
-                        [1] = "evolvePet",
-                        [2] = petName
-                    }
-
-                    game:GetService("ReplicatedStorage").rEvents.petEvolveEvent:FireServer(unpack(args))
-                    task.wait(1.5)
-                end
-            end)
-        end
-    end)
-end
-
-createAutoEvolveSwitch(autoEvolveFolder, "Core Pup")
-createAutoEvolveSwitch(autoEvolveFolder, "Volt Talon")
-createAutoEvolveSwitch(autoEvolveFolder, "Reactor Beast")
-createAutoEvolveSwitch(autoEvolveFolder, "Plasma Ravager")
-createAutoEvolveSwitch(autoEvolveFolder, "Titan Reactor")
-createAutoEvolveSwitch(autoEvolveFolder, "Apex Overload")
+local autoEvolveFolder = crystalsTab:AddFolder("Auto Evolved")
 
 local autoEvolveAllEnabled = false
 
@@ -2090,7 +2061,45 @@ autoEvolveFolder:AddSwitch("Auto Evolve All Pets", function(state)
                     end
                 end
                 
-                task.wait(1.5)
+                task.wait(1)
+            end
+        end)
+    end
+end)
+
+local autoEvolveAuraEnabled = false
+
+autoEvolveFolder:AddSwitch("Auto Evolve All Auras", function(state)
+    autoEvolveAuraEnabled = state
+    
+    if autoEvolveAuraEnabled then
+        task.spawn(function()
+            while autoEvolveAuraEnabled do
+                local player = game:GetService("Players").LocalPlayer
+                local powerUpsFolder = player and player:FindFirstChild("powerUpsFolder")
+                
+                if powerUpsFolder then
+                    for _, subfolder in ipairs(powerUpsFolder:GetChildren()) do
+                        if subfolder:IsA("Folder") or subfolder:IsA("Configuration") then
+                            for _, powerUp in ipairs(subfolder:GetChildren()) do
+                                if not autoEvolveAuraEnabled then break end
+                                
+                                local args = {
+                                    [1] = "evolvePowerUp",
+                                    [2] = powerUp
+                                }
+
+                                pcall(function()
+                                    game:GetService("ReplicatedStorage").rEvents.evolvePowerUpEvent:FireServer(unpack(args))
+                                end)
+                                
+                                task.wait(0.2)
+                            end
+                        end
+                    end
+                end
+                
+                task.wait(1)
             end
         end)
     end
