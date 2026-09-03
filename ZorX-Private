@@ -1806,6 +1806,180 @@ crystalsTab:AddSwitch("Auto Open Crystal", function(state)
     end
 end)
 
+local autotrade = crystalsTab:AddFolder("Auto Trade")
+
+local selectedTargetPlayer = nil
+
+local dropdown = autotrade:AddDropdown("Select Player", function(selectedPlayerName)
+    for _, player in ipairs(game:GetService("Players"):GetPlayers()) do
+        if player.DisplayName == selectedPlayerName then
+            selectedTargetPlayer = player
+            break
+        end
+    end
+    
+    if selectedTargetPlayer then
+        local args = {
+            [1] = "sendTradeRequest",
+            [2] = selectedTargetPlayer
+        }
+        game:GetService("ReplicatedStorage").rEvents.tradingEvent:FireServer(unpack(args))
+    end
+end)
+
+local function updatePlayers()
+    for _, player in ipairs(game:GetService("Players"):GetPlayers()) do
+        if player ~= game.Players.LocalPlayer then
+            dropdown:Add(player.DisplayName)
+        end
+    end
+end
+
+updatePlayers()
+
+game:GetService("Players").PlayerAdded:Connect(function(player)
+    dropdown:Add(player.DisplayName)
+end)
+
+local autoTradeConnection
+autotrade:AddSwitch("Auto Trade", function(state)
+    if state then
+        autoTradeConnection = task.spawn(function()
+            while true do
+                if selectedTargetPlayer and selectedTargetPlayer.Parent then
+                    local args = {
+                        [1] = "sendTradeRequest",
+                        [2] = selectedTargetPlayer
+                    }
+                    pcall(function()
+                        game:GetService("ReplicatedStorage").rEvents.tradingEvent:FireServer(unpack(args))
+                    end)
+                end
+                task.wait(2)
+            end
+        end)
+    else
+        if autoTradeConnection then
+            task.cancel(autoTradeConnection)
+            autoTradeConnection = nil
+        end
+    end
+end)
+
+local autoAcceptConnection
+autotrade:AddSwitch("Auto Accept Trade", function(state)
+    if state then
+        autoAcceptConnection = task.spawn(function()
+            while true do
+                local args = {
+                    [1] = "acceptTrade"
+                }
+                pcall(function()
+                    game:GetService("ReplicatedStorage").rEvents.tradingEvent:FireServer(unpack(args))
+                end)
+                task.wait(1)
+            end
+        end)
+    else
+        if autoAcceptConnection then
+            task.cancel(autoAcceptConnection)
+            autoAcceptConnection = nil
+        end
+    end
+end)
+
+local function findAllPlayerItems(itemName)
+    local localPlayer = game:GetService("Players").LocalPlayer
+    local foundItems = {}
+    local petsFolder = localPlayer:FindFirstChild("petsFolder")
+    
+    if petsFolder then
+        for _, category in ipairs(petsFolder:GetChildren()) do
+            for _, item in ipairs(category:GetChildren()) do
+                if item.Name == itemName then
+                    table.insert(foundItems, item)
+                end
+            end
+        end
+    end
+    
+    return foundItems
+end
+
+local currentItemName = "Apex Overlord"
+
+local petDropdown = autotrade:AddDropdown("Select Pet", function(selectedPetName)
+    currentItemName = selectedPetName
+    local items = findAllPlayerItems(selectedPetName)
+    
+    if #items > 0 then
+        for i = 1, math.min(6, #items) do
+            local args = {
+                [1] = "offerItem",
+                [2] = items[i]
+            }
+            pcall(function()
+                game:GetService("ReplicatedStorage").rEvents.tradingEvent:FireServer(unpack(args))
+            end)
+            task.wait(0.05)
+        end
+    else
+        warn("Pet not found: " .. tostring(selectedPetName))
+    end
+end)
+
+local petList = {
+    "Blue Birdie", "Orange Hedgehog", "Red Kitty", "Dark Vampy",
+    "Blue Bunny", "Silver Dog", "Green Butterfly", "Crimson Falcon",
+    "Dark Golem", "Yellow Butterfly", "Purple Dragon", "Blue Phoenix",
+    "Orange Pegasus", "Purple Falcon", "Red Dragon", "Blue Firecaster",
+    "Golden Phoenix", "Red Firecaster", "Infernal Dragon", "White Pegasus",
+    "Inferno", "Ultra Birdie", "Magic Butterfly", "Green Firecaster",
+    "White Phoenix", "Supernova", "Frostwave Legends Penguin",
+    "Phantom Genesis Dragon", "Dark Legends Manticore", "Ultimate Supernova Pegasus",
+    "Aether Spirit Bunny", "Cybernetic Showdown Dragon", "Eternal Strike Leviathan",
+    "Lightning Strike Phantom", "Darkstar Hunter", "Muscle Sensei",
+    "Neon Guardian", "Eternal Megastrike", "Golden Viking", "Core Pup",
+    "Volt Talon", "Reactor Beast", "Plasma Ravager", "Titan Reactor",
+    "Apex Overlord", "Gold Warrior"
+}
+
+for _, petName in ipairs(petList) do
+    petDropdown:Add(petName)
+end
+
+local autoAddSelectedConnection
+autotrade:AddSwitch("Auto Add Selected Pet", function(state)
+    if state then
+        autoAddSelectedConnection = task.spawn(function()
+            while true do
+                if currentItemName ~= "" then
+                    local items = findAllPlayerItems(currentItemName)
+                    
+                    if #items > 0 then
+                        for i = 1, math.min(6, #items) do
+                            local args = {
+                                [1] = "offerItem",
+                                [2] = items[i]
+                            }
+                            pcall(function()
+                                game:GetService("ReplicatedStorage").rEvents.tradingEvent:FireServer(unpack(args))
+                            end)
+                            task.wait(0.05)
+                        end
+                    end
+                end
+                task.wait(1.5)
+            end
+        end)
+    else
+        if autoAddSelectedConnection then
+            task.cancel(autoAddSelectedConnection)
+            autoAddSelectedConnection = nil
+        end
+    end
+end)
+
 local autoSellFolder = crystalsTab:AddFolder("Auto Sell")
 
 local function createAutoSellSwitch(tab, petName)
