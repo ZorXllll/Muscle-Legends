@@ -14,7 +14,6 @@ local window = library:AddWindow(windowTitle, {
 })
 
 local AutoFarm = window:AddTab("Farm")
-AutoFarm:Show()
 
 local Players = game:GetService("Players")
 local VirtualUser = game:GetService("VirtualUser")
@@ -1842,8 +1841,6 @@ for _, auraName in ipairs(allAuras) do
     auraDropdown:Add(auraName)
 end
 
-crystalsTab:AddLabel("=== System to buys ===")
-
 crystalsTab:AddSwitch("Auto Buy Pet", function(bool)
     _G.AutoBuyPet = bool
     if bool then
@@ -2554,7 +2551,6 @@ end
 -- [SECTION 2: TAB 1 - LOCAL STATS & SESSION TIME]
 ---------------------------------------------------------
 local statsTab = window:AddTab("Stats 📊")
-statsTab:Show()
 
 _G.LocalTracker.ClockLabel = statsTab:AddLabel("Session Time: 00:00:00")
 
