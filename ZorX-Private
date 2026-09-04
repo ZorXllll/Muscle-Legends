@@ -9,7 +9,7 @@ local windowTitle = "ZorX~Private | | | Good Afternoon " .. LocalPlayer.DisplayN
 
 local window = library:AddWindow(windowTitle, {
     main_color = Color3.fromRGB(0, 0, 0),
-    min_size = Vector2.new(550, 500),
+    min_size = Vector2.new(600, 500),
     can_resize = false
 })
 
