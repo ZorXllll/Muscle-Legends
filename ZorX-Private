@@ -486,7 +486,7 @@ AutoFarm:AddSwitch("Auto Egg (60 Min)", function(p383)
     u377 = p383
 end)
 
-local AutoEquipTools = window:AddTab("Auto Tools")
+local AutoEquipTools = AutoFarm:AddFolder("Auto Tools")
 
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
