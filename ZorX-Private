@@ -486,194 +486,75 @@ AutoFarm:AddSwitch("Auto Egg (60 Min)", function(p383)
     u377 = p383
 end)
 
-local autoEquipToolsFolder = AutoFarm:AddFolder("Auto Tools")
+local AutoEquipTools = window:AddTab("Auto Tools")
 
--- ✅ Configuración optimizada
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
-local Stats = game:GetService("Stats")
 local LocalPlayer = Players.LocalPlayer
 
-local PET_NAME = "Swift Samurai"
-local ROCK_NAME = "Rock5M"
-local PROTEIN_EGG_NAME = "ProteinEgg"
-local PROTEIN_EGG_INTERVAL = 30 * 60 -- 30 min
-local REPS_PER_CYCLE = 60
-local REP_DELAY = 0.01
-local ROCK_INTERVAL = 3
-local MAX_PING = 500
+local AutoEquipTools = window:AddTab("Auto Tools")
 
-local HumanoidRootPart
-local lastProteinEggTime = 0
-local lastRockTime = 0
-local RockRef = workspace:FindFirstChild(ROCK_NAME)
-
-local function getPing()
-    local success, ping = pcall(function()
-        return Stats.Network.ServerStatsItem["Data Ping"]:GetValue()
-    end)
-    return success and ping or 999
-end
-
-local function updateCharacterRefs()
-    local character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-    HumanoidRootPart = character:WaitForChild("HumanoidRootPart", 5)
-end
-
-local function equipPet()
-    local petsFolder = LocalPlayer:FindFirstChild("petsFolder")
-    if petsFolder and petsFolder:FindFirstChild("Unique") then
-        for _, pet in pairs(petsFolder.Unique:GetChildren()) do
-            if pet.Name == PET_NAME then
-                ReplicatedStorage.rEvents.equipPetEvent:FireServer("equipPet", pet)
-                break
-            end
-        end
-    end
-end
-
-local function eatProteinEgg()
-    if LocalPlayer:FindFirstChild("Backpack") then
-        for _, item in pairs(LocalPlayer.Backpack:GetChildren()) do
-            if item.Name == PROTEIN_EGG_NAME then
-                ReplicatedStorage.rEvents.eatEvent:FireServer("eat", item)
-                break
-            end
-        end
-    end
-end
-
-local function hitRock()
-    if not RockRef or not RockRef.Parent then
-        RockRef = workspace:FindFirstChild(ROCK_NAME)
-    end
-    if RockRef and HumanoidRootPart then
-        HumanoidRootPart.CFrame = RockRef.CFrame * CFrame.new(0, 0, -5)
-        ReplicatedStorage.rEvents.hitEvent:FireServer("hit", RockRef)
-    end
-end
-
--- ✅ Loop principal
-if not getgenv()._AutoRepFarmLoop then
-    getgenv()._AutoRepFarmLoop = true
-
-    task.spawn(function()
-        updateCharacterRefs()
-        equipPet()
-        lastProteinEggTime = tick()
-        lastRockTime = tick()
-
-        while true do
-            if getgenv()._AutoRepFarmEnabled then
-                local ping = getPing()
-                if ping > MAX_PING then
-                    warn("[Auto Rep Farm] Ping alto ("..math.floor(ping).."ms), pausando 5s...")
-                    task.wait(5)
-                else
-                    if LocalPlayer:FindFirstChild("muscleEvent") then
-                        for i = 1, REPS_PER_CYCLE do
-                            LocalPlayer.muscleEvent:FireServer("rep")
-                        end
-                    end
-
-                    if tick() - lastProteinEggTime >= PROTEIN_EGG_INTERVAL then
-                        eatProteinEgg()
-                        lastProteinEggTime = tick()
-                    end
-
-                    if tick() - lastRockTime >= ROCK_INTERVAL then
-                        hitRock()
-                        lastRockTime = tick()
-                    end
-
-                    task.wait(REP_DELAY)
-                end
-            else
-                task.wait(1)
-            end
-        end
-    end)
-end
-
--- Función para crear switches de auto-equip
-local function createAutoToolSwitch(toolName, globalVar)
-    autoEquipToolsFolder:AddSwitch("Auto " .. toolName, function(Value)
+local function autoEquipItem(toolName, globalVar, customEventName, customEventArg)
+    AutoEquipTools:AddSwitch("Auto " .. toolName, function(Value)
         _G[globalVar] = Value
-        
-        if Value then
-            local tool = LocalPlayer.Backpack:FindFirstChild(toolName)
-            if tool then
-                LocalPlayer.Character.Humanoid:EquipTool(tool)
-            end
-        else
-            local character = LocalPlayer.Character
-            local equipped = character:FindFirstChild(toolName)
-            if equipped then
-                equipped.Parent = LocalPlayer.Backpack
-            end
-        end
         
         task.spawn(function()
             while _G[globalVar] do
-                if not _G[globalVar] then break end
-                LocalPlayer.muscleEvent:FireServer("rep")
                 task.wait(0.1)
-            end
-        end)
-    end)
-end
-
-createAutoToolSwitch("Weight", "AutoWeight")
-createAutoToolSwitch("Pushups", "AutoPushups")
-createAutoToolSwitch("Handstands", "AutoHandstands")
-createAutoToolSwitch("Situps", "AutoSitups")
-
-autoEquipToolsFolder:AddSwitch("Auto Punch", function(Value)
-    _G.fastHitActive = Value
-    
-    if Value then
-        task.spawn(function()
-            while _G.fastHitActive do
-                if not _G.fastHitActive then break end
+                if not _G[globalVar] then break end
                 
-                local punch = LocalPlayer.Backpack:FindFirstChild("Punch")
-                if punch then
-                    punch.Parent = LocalPlayer.Character
-                    if punch:FindFirstChild("attackTime") then
-                        punch.attackTime.Value = 0
+                local character = LocalPlayer.Character
+                local backpack = LocalPlayer.Backpack
+                
+                if character then
+                    local humanoid = character:FindFirstChildOfClass("Humanoid")
+                    local equipped = character:FindFirstChild(toolName)
+                    
+                    if not equipped and backpack then
+                        local tool = backpack:FindFirstChild(toolName)
+                        if tool and humanoid then
+                            humanoid:EquipTool(tool)
+                        end
                     end
                 end
-                task.wait(0.1)
             end
         end)
         
         task.spawn(function()
-            while _G.fastHitActive do
-                if not _G.fastHitActive then break end
+            while _G[globalVar] do
+                task.wait(0.1)
+                if not _G[globalVar] then break end
                 
-                LocalPlayer.muscleEvent:FireServer("punch", "rightHand")
-                LocalPlayer.muscleEvent:FireServer("punch", "leftHand")
-                
-                local character = LocalPlayer.Character
-                if character then
-                    local punchTool = character:FindFirstChild("Punch")
-                    if punchTool then
-                        punchTool:Activate()
+                local muscleEvent = LocalPlayer:FindFirstChild("muscleEvent")
+                if muscleEvent then
+                    if customEventName then
+                        muscleEvent:FireServer(customEventName, customEventArg)
+                    else
+                        muscleEvent:FireServer("rep")
                     end
                 end
-                task.wait()
             end
         end)
-    else
-        local character = LocalPlayer.Character
-        local equipped = character:FindFirstChild("Punch")
-        if equipped then
-            equipped.Parent = LocalPlayer.Backpack
+        
+        if not Value then
+            local character = LocalPlayer.Character
+            local backpack = LocalPlayer.Backpack
+            if character and backpack then
+                local equipped = character:FindFirstChild(toolName)
+                if equipped then
+                    equipped.Parent = backpack
+                end
+            end
         end
-    end
-end)
+    end)
+end
 
-autoEquipToolsFolder:AddSwitch("Fast Tools", function(Value)
+autoEquipItem("Weight", "AutoWeight")
+autoEquipItem("Pushups", "AutoPushups")
+autoEquipItem("Handstands", "AutoHandstands")
+autoEquipItem("Situps", "AutoSitups")
+autoEquipItem("Punch", "AutoPunch", "punch", "rightHand")
+
+AutoEquipTools:AddSwitch("Fast Tools", function(Value)
     _G.FastTools = Value
     
     local toolSettings = {
@@ -686,19 +567,39 @@ autoEquipToolsFolder:AddSwitch("Fast Tools", function(Value)
         {"Situps", "repTime", Value and 0 or 1}
     }
     
-    local backpack = LocalPlayer:WaitForChild("Backpack")
-    
-    for _, toolInfo in ipairs(toolSettings) do
-        local tool = backpack:FindFirstChild(toolInfo[1])
-        if tool and tool:FindFirstChild(toolInfo[2]) then
-            tool[toolInfo[2]].Value = toolInfo[3]
+    task.spawn(function()
+        while _G.FastTools do
+            task.wait(0.01)
+            if not _G.FastTools then break end
+            
+            local character = game.Players.LocalPlayer.Character
+            local backpack = game.Players.LocalPlayer.Backpack
+            
+            for _, toolInfo in ipairs(toolSettings) do
+                local toolName = toolInfo[1]
+                local propName = toolInfo[2]
+                local propVal = toolInfo[3]
+                
+                if backpack then
+                    local tool = backpack:FindFirstChild(toolName)
+                    if tool and tool:FindFirstChild(propName) then
+                        tool[propName].Value = propVal
+                    end
+                end
+                
+                if character then
+                    local equippedTool = character:FindFirstChild(toolName)
+                    if equippedTool then
+                        if equippedTool:FindFirstChild(propName) then
+                            equippedTool[propName].Value = propVal
+                        end
+                        
+                        equippedTool:Activate()
+                    end
+                end
+            end
         end
-        
-        local equippedTool = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild(toolInfo[1])
-        if equippedTool and equippedTool:FindFirstChild(toolInfo[2]) then
-            equippedTool[toolInfo[2]].Value = toolInfo[3]
-        end
-    end
+    end)
 end)
 
 local opfarms = AutoFarm:AddFolder("OP Farming")
