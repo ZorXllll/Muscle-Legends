@@ -486,7 +486,7 @@ AutoFarm:AddSwitch("Auto Egg (60 Min)", function(p383)
     u377 = p383
 end)
 
-local AutoEquipTools = AutoFarm:AddFolder("Auto Tools")
+local AutoEquipTools = AutoFarm:AddFolder()
 
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
@@ -564,6 +564,32 @@ AutoEquipTools:AddSwitch("Fast Tools", function(Value)
         {"Weight", "repTime", Value and 0 or 1},
         {"Situps", "repTime", Value and 0 or 1}
     }
+    
+    if not Value then
+        local character = LocalPlayer.Character
+        local backpack = LocalPlayer.Backpack
+        
+        for _, toolInfo in ipairs(toolSettings) do
+            local toolName = toolInfo[1]
+            local propName = toolInfo[2]
+            local normalVal = toolInfo[3]
+            
+            if backpack then
+                local tool = backpack:FindFirstChild(toolName)
+                if tool and tool:FindFirstChild(propName) then
+                    tool[propName].Value = normalVal
+                end
+            end
+            
+            if character then
+                local equippedTool = character:FindFirstChild(toolName)
+                if equippedTool and equippedTool:FindFirstChild(propName) then
+                    equippedTool[propName].Value = normalVal
+                end
+            end
+        end
+        return
+    end
     
     task.spawn(function()
         while _G.FastTools do
