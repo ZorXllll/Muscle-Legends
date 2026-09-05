@@ -3936,6 +3936,51 @@ msud:AddSwitch("Auto Join Brawl", function(State)
     end
 end)
 
+local autoClaimEnabled = false
+local autoFortuneEnabled = false
+
+msud:AddSwitch("Auto Claim All Gifts", function(state)
+    autoClaimEnabled = state
+    
+    if autoClaimEnabled then
+        task.spawn(function()
+            while autoClaimEnabled do
+                for i = 1, 8 do
+                    if not autoClaimEnabled then break end
+                    local args = {
+                        [1] = "claimGift",
+                        [2] = i
+                    }
+                    pcall(function()
+                        game:GetService("ReplicatedStorage").rEvents.freeGiftClaimRemote:InvokeServer(unpack(args))
+                    end)
+                    task.wait(0.2)
+                end
+                task.wait(1)
+            end
+        end)
+    end
+end)
+
+msud:AddSwitch("Auto Spin Wheel", function(state)
+    autoFortuneEnabled = state
+    
+    if autoFortuneEnabled then
+        task.spawn(function()
+            while autoFortuneEnabled do
+                local args = {
+                    [1] = "openFortuneWheel",
+                    [2] = game:GetService("ReplicatedStorage").shared.catalogs.fortuneWheelChances:FindFirstChild("Fortune Wheel")
+                }
+                pcall(function()
+                    game:GetService("ReplicatedStorage").rEvents.openFortuneWheelRemote:InvokeServer(unpack(args))
+                end)
+                task.wait(1)
+            end
+        end)
+    end
+end)
+
     local button = msud:AddButton("Walk Water", function()
    
     local WalkPart = Instance.new("Part")
