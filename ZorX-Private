@@ -491,8 +491,6 @@ local AutoEquipTools = AutoFarm:AddFolder("Auto Tools")
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 
-local AutoEquipTools = window:AddTab("Auto Tools")
-
 local function autoEquipItem(toolName, globalVar, customEventName, customEventArg)
     AutoEquipTools:AddSwitch("Auto " .. toolName, function(Value)
         _G[globalVar] = Value
