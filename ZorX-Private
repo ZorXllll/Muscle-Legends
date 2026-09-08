@@ -405,6 +405,99 @@ AutoFarm:AddTextBox('Enter Rep Speed', function(p273)
 			end
 		end)
 
+AutoFarm:AddButton("Equip Rep Pets", function()
+    local player = game:GetService("Players").LocalPlayer
+    local petsFolder = player:FindFirstChild("petsFolder")
+    
+    if petsFolder then
+        for _, folder in pairs(petsFolder:GetChildren()) do
+            if folder:IsA("Folder") then
+                for _, pet in pairs(folder:GetChildren()) do
+                    game:GetService("ReplicatedStorage").rEvents.equipPetEvent:FireServer("unequipPet", pet)
+                end
+            end
+        end
+    end
+    task.wait(0.2)
+
+    local omegas = {}
+    local swifts = {}
+    local hounds = {}
+    local rares = {}
+    local rareBosses = {}
+
+    if petsFolder and petsFolder:FindFirstChild("Unique") then
+        for _, pet in pairs(petsFolder.Unique:GetChildren()) do
+            if pet.Name == "Omega Overlord" then table.insert(omegas, pet)
+            elseif pet.Name == "Swift Samurai" then table.insert(swifts, pet)
+            elseif pet.Name == "Powercore Hound" then table.insert(hounds, pet)
+            end
+        end
+    end
+
+    if petsFolder and petsFolder:FindFirstChild("Rare") then
+        for _, pet in pairs(petsFolder.Rare:GetChildren()) do
+            table.insert(rares, pet)
+            if pet.Name == "Rare Boss" then
+                table.insert(rareBosses, pet)
+            end
+        end
+    end
+
+    local equippedCount = 0
+    local currentPercent = 0
+    local maxSlots = 9
+
+    for i = #rareBosses, 1, -1 do
+        if equippedCount < maxSlots then
+            local pet = table.remove(rareBosses, i)
+            game:GetService("ReplicatedStorage").rEvents.equipPetEvent:FireServer("equipPet", pet)
+            equippedCount = equippedCount + 1
+            task.wait(0.1)
+        end
+    end
+
+    for i = #omegas, 1, -1 do
+        if equippedCount < maxSlots and currentPercent < 100 then
+            local pet = table.remove(omegas, i)
+            game:GetService("ReplicatedStorage").rEvents.equipPetEvent:FireServer("equipPet", pet)
+            currentPercent = currentPercent + 20
+            equippedCount = equippedCount + 1
+            task.wait(0.1)
+        end
+    end
+
+    for i = #swifts, 1, -1 do
+        if equippedCount < maxSlots and currentPercent < 100 then
+            local pet = table.remove(swifts, i)
+            game:GetService("ReplicatedStorage").rEvents.equipPetEvent:FireServer("equipPet", pet)
+            currentPercent = currentPercent + 15
+            equippedCount = equippedCount + 1
+            task.wait(0.1)
+        end
+    end
+
+    if currentPercent >= 100 then
+        for i = #hounds, 1, -1 do
+            if equippedCount < maxSlots then
+                local pet = table.remove(hounds, i)
+                game:GetService("ReplicatedStorage").rEvents.equipPetEvent:FireServer("equipPet", pet)
+                equippedCount = equippedCount + 1
+                task.wait(0.1)
+            end
+        end
+    end
+
+    for i = #rares, 1, -1 do
+        if equippedCount < maxSlots then
+            local pet = table.remove(rares, i)
+            game:GetService("ReplicatedStorage").rEvents.equipPetEvent:FireServer("equipPet", pet)
+            equippedCount = equippedCount + 1
+            task.wait(0.1)
+        end
+    end
+end)
+
 local u377 = false
 
 local function u382()
