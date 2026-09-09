@@ -1,5 +1,5 @@
 -- CARGA DE LIBRERÍA
-local library = loadstring(game:HttpGet("https://raw.githubusercontent.com/ZorXllll/ZorX-UI-Library/refs/heads/main/llll-Private"))()
+local library = loadstring(game:HttpGet("https://raw.githubusercontent.com/ZorXllll/Zorx-UI-Library-V2/refs/heads/main/ZorX-Private"))()
 
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
