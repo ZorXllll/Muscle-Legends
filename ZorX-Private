@@ -2116,15 +2116,18 @@ autoEvolveFolder:AddSwitch("Auto Evolve All Auras", function(state)
     end
 end)
 
+local LocalPlayer = game:GetService("Players").LocalPlayer
+local RunService = game:GetService("RunService")
+
 local tab = window:AddTab("Bosses")
 tab:Show()
 
 local isAutoFarmActive = false
-local isBossPresent = false -- Bagong flag para malaman kung may active boss na nilalagyan ng TP loop
+local isBossPresent = false
 local FastPunchConnection = nil
 local bossNames = {"Boss1", "Boss2", "Boss3", "Boss4", "Boss5", "BossRainbow"}
 
-local autoFarmSwitch = tab:AddSwitch("Auto Farm All Bosses", function(state)
+local autoFarmSwitch = tab:AddSwitch("Auto Farm All Boss", function(state)
     isAutoFarmActive = state
     _G.punchanim = state
 
@@ -2133,7 +2136,7 @@ local autoFarmSwitch = tab:AddSwitch("Auto Farm All Bosses", function(state)
     end
 
     if state then
-        -- TP Loop na kusang lumilipat kapag wala o patay na ang boss
+        -- Anti-Lag TP Loop
         task.spawn(function()
             while isAutoFarmActive do
                 for _, name in ipairs(bossNames) do
@@ -2150,7 +2153,7 @@ local autoFarmSwitch = tab:AddSwitch("Auto Farm All Bosses", function(state)
                             
                             if bossTarget and playerRoot then
                                 foundBoss = true
-                                isBossPresent = true -- Na-detect ang boss at nagte-teleport
+                                isBossPresent = true
                                 if bossTarget:IsA("Model") and bossTarget.PrimaryPart then
                                     playerRoot.CFrame = bossTarget.PrimaryPart.CFrame * CFrame.new(0, 3, 3)
                                 elseif bossTarget:FindFirstChild("HumanoidRootPart") then
@@ -2161,13 +2164,12 @@ local autoFarmSwitch = tab:AddSwitch("Auto Farm All Bosses", function(state)
                             end
                         end)
                         
-                        -- Kung wala ang boss, agad na lumipat sa sunod nang hindi naghihintay ng 5 sec
                         if not foundBoss then 
-                            isBossPresent = false -- Naka-off ang fast punch kapag walang boss
+                            isBossPresent = false
                             break 
                         end
                         
-                        task.wait(0.1)
+                        task.wait(0.15) -- Bahagyang tinaasan para iwas lag spike sa teleports
                     end
                     isBossPresent = false
                 end
@@ -2175,14 +2177,142 @@ local autoFarmSwitch = tab:AddSwitch("Auto Farm All Bosses", function(state)
             isBossPresent = false
         end)
 
-        -- Fast Punch Connection naauto-reconnect kapag namatay ang player
+        if FastPunchConnection then 
+            FastPunchConnection:Disconnect() 
+            FastPunchConnection = nil 
+        end
+        
+        -- Ginamit ang task.spawn loop sa halip na Heartbeat para hindi mag-lag ang UI at FPS mo
+        task.spawn(function()
+            while isAutoFarmActive do
+                if _G.punchanim and isBossPresent then
+                    pcall(function()
+                        local Character = LocalPlayer.Character
+                        if Character then
+                            local Humanoid = Character:FindFirstChildOfClass('Humanoid')
+                            local PunchTool = LocalPlayer.Backpack:FindFirstChild('Punch') or Character:FindFirstChild('Punch')
+                            
+                            if PunchTool then
+                                local attackTime = PunchTool:FindFirstChild('attackTime')
+                                if attackTime and attackTime.Value ~= 0 then 
+                                    attackTime.Value = 0 
+                                end
+                                
+                                if Humanoid and PunchTool.Parent ~= Character then 
+                                    Humanoid:EquipTool(PunchTool) 
+                                end
+                                
+                                PunchTool:Activate()
+                            end
+                        end
+                    end)
+                end
+                task.wait(0.01) -- Nilagyan ng 0.1 delay para hindi kainin ang CPU/FPS mo
+            end
+            
+            -- I-reset ang attackTime kapag tumigil
+            pcall(function()
+                local PunchInBackpack = LocalPlayer.Backpack:FindFirstChild('Punch')
+                local PunchInCharacter = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild('Punch')
+                local TargetPunch = PunchInBackpack or PunchInCharacter
+                if TargetPunch and TargetPunch:FindFirstChild('attackTime') then 
+                    TargetPunch.attackTime.Value = 0.35 
+                end
+            end)
+        end)
+    else
+        if FastPunchConnection then 
+            FastPunchConnection:Disconnect() 
+            FastPunchConnection = nil 
+        end
+        
+        pcall(function()
+            local PunchInBackpack = LocalPlayer.Backpack:FindFirstChild('Punch')
+            local PunchInCharacter = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild('Punch')
+            local TargetPunch = PunchInBackpack or PunchInCharacter
+            
+            if TargetPunch and TargetPunch:FindFirstChild('attackTime') then 
+                TargetPunch.attackTime.Value = 0.35 
+            end
+        end)
+    end
+end)
+
+autoFarmSwitch:Set(false)
+
+local isAutoFarmActive = false
+local isBossPresent = false
+local FastPunchConnection = nil
+local selectedBoss = ""
+local bossNames = {"Boss1", "Boss2", "Boss3", "Boss4", "Boss5", "BossRainbow"}
+
+-- Dropdown para sa mga boss (wala na ang "All Bosses")
+local bossDropdown = tab:AddDropdown("Select Boss", function(text)
+    selectedBoss = text
+end)
+
+-- Idinaragdag lang ang mga indibidwal na boss sa dropdown
+for _, name in ipairs(bossNames) do
+    bossDropdown:Add(name)
+end
+
+local autoFarmSwitch = tab:AddSwitch("Auto Farm Boss", function(state)
+    isAutoFarmActive = state
+    _G.punchanim = state
+
+    if not state then
+        isBossPresent = false
+    end
+
+    if state then
+        task.spawn(function()
+            while isAutoFarmActive do
+                if selectedBoss == "" then
+                    task.wait(0.5)
+                    continue
+                end
+
+                local startTime = tick()
+                while isAutoFarmActive and (tick() - startTime) < 6 do
+                    local foundBoss = false
+                    
+                    pcall(function()
+                        local bossArena = workspace:FindFirstChild("Events") and workspace.Events:FindFirstChild("BossArena")
+                        local bossTarget = bossArena and bossArena:FindFirstChild(selectedBoss) and bossArena[selectedBoss]:FindFirstChild("Boss")
+                        local playerRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                        
+                        if bossTarget and playerRoot then
+                            foundBoss = true
+                            isBossPresent = true
+                            if bossTarget:IsA("Model") and bossTarget.PrimaryPart then
+                                playerRoot.CFrame = bossTarget.PrimaryPart.CFrame * CFrame.new(0, 3, 3)
+                            elseif bossTarget:FindFirstChild("HumanoidRootPart") then
+                                playerRoot.CFrame = bossTarget.HumanoidRootPart.CFrame * CFrame.new(0, 3, 3)
+                            elseif bossTarget:IsA("BasePart") then
+                                playerRoot.CFrame = bossTarget.CFrame * CFrame.new(0, 3, 3)
+                            end
+                        end
+                    end)
+                    
+                    if not foundBoss then 
+                        isBossPresent = false
+                        break 
+                    end
+                    
+                    task.wait(0.1)
+                end
+                isBossPresent = false
+                task.wait(0.5)
+            end
+            isBossPresent = false
+        end)
+
         if FastPunchConnection then 
             FastPunchConnection:Disconnect() 
             FastPunchConnection = nil 
         end
         
         FastPunchConnection = RunService.Heartbeat:Connect(function()
-            -- Dinagdagan ng 'and isBossPresent' para hindi pumalo ang punch kung walang active boss / teleport loop
             if _G.punchanim and isAutoFarmActive and isBossPresent then
                 local Character = LocalPlayer.Character
                 if Character then
@@ -2203,14 +2333,11 @@ local autoFarmSwitch = tab:AddSwitch("Auto Farm All Bosses", function(state)
                     end
                 end
             else
-                if FastPunchConnection then 
-                    -- Optional: panatilihing connected pero hindi mag-a-activate, o kaya i-reset attackTime
-                    local PunchInBackpack = LocalPlayer.Backpack:FindFirstChild('Punch')
-                    local PunchInCharacter = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild('Punch')
-                    local TargetPunch = PunchInBackpack or PunchInCharacter
-                    if TargetPunch and TargetPunch:FindFirstChild('attackTime') then 
-                        TargetPunch.attackTime.Value = 0.35 
-                    end
+                local PunchInBackpack = LocalPlayer.Backpack:FindFirstChild('Punch')
+                local PunchInCharacter = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild('Punch')
+                local TargetPunch = PunchInBackpack or PunchInCharacter
+                if TargetPunch and TargetPunch:FindFirstChild('attackTime') then 
+                    TargetPunch.attackTime.Value = 0.35 
                 end
             end
         end)
