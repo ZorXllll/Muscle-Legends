@@ -2118,19 +2118,43 @@ autoEvolveFolder:AddSwitch("Auto Evolve All Auras", function(state)
 end)
 
 local tab = window:AddTab("Bosses")
+tab:Show()
 
 local LocalPlayer = game:GetService("Players").LocalPlayer
+local RunService = game:GetService("RunService")
 local bossNames = {"Boss1", "Boss2", "Boss3", "Boss4", "Boss5", "BossRainbow"}
 
-local function getBossCFrame(bossTarget)
+local function getBossHeadCFrame(bossTarget)
     if not bossTarget then return nil end
-    if bossTarget:IsA("Model") and bossTarget.PrimaryPart then
-        return bossTarget.PrimaryPart.CFrame
-    elseif bossTarget:FindFirstChild("HumanoidRootPart") then
-        return bossTarget.HumanoidRootPart.CFrame
-    elseif bossTarget:IsA("BasePart") then
-        return bossTarget.CFrame
+    
+    local function extractHead(obj)
+        if obj:IsA("Model") then
+            local head = obj:FindFirstChild("Head") or obj.PrimaryPart
+            if head then return head.CFrame end
+        elseif obj:IsA("BasePart") then
+            if obj.Name == "Head" then
+                return obj.CFrame
+            else
+                local model = obj:FindFirstAncestorOfClass("Model")
+                if model then
+                    local head = model:FindFirstChild("Head")
+                    if head then return head.CFrame end
+                end
+                return obj.CFrame
+            end
+        end
+        return nil
     end
+
+    if bossTarget:IsA("Folder") then
+        local targetModel = bossTarget:FindFirstChild("Boss") or bossTarget:FindFirstChildOfClass("Model") or bossTarget:FindFirstChildOfClass("BasePart")
+        if targetModel then
+            return extractHead(targetModel)
+        end
+    else
+        return extractHead(bossTarget)
+    end
+    
     return nil
 end
 
@@ -2140,7 +2164,6 @@ tab:AddSwitch("Auto Farm All Boss", function(state)
     isAllActive = state
 
     if state then
-        -- Fast Punch Active Loop (Tool Activation + attackTime)
         task.spawn(function()
             while isAllActive do
                 pcall(function()
@@ -2174,7 +2197,6 @@ tab:AddSwitch("Auto Farm All Boss", function(state)
             end)
         end)
 
-        -- Detector Teleport Loop na may task.wait(0.1)
         task.spawn(function()
             while isAllActive do
                 local bossArena = workspace:FindFirstChild("Events") and workspace.Events:FindFirstChild("BossArena")
@@ -2183,15 +2205,32 @@ tab:AddSwitch("Auto Farm All Boss", function(state)
                         if not isAllActive then break end
                         
                         local bossFolder = bossArena:FindFirstChild(name)
-                        local bossTarget = bossFolder and bossFolder:FindFirstChild("Boss")
+                        local bossTarget = bossFolder and (bossFolder:FindFirstChild("Boss") or bossFolder)
                         
                         while isAllActive do
-                            bossTarget = bossFolder and bossFolder:FindFirstChild("Boss")
-                            local targetCF = getBossCFrame(bossTarget)
+                            bossTarget = bossFolder and (bossFolder:FindFirstChild("Boss") or bossFolder)
+                            local targetCF = getBossHeadCFrame(bossTarget)
                             local rootPart = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
                             
                             if targetCF and rootPart then
-                                rootPart.CFrame = targetCF * CFrame.new(0, 3, 3)
+                                -- Continuous frame-by-frame teleport loop locked directly onto the head
+                                local connection
+                                connection = RunService.Heartbeat:Connect(function()
+                                    if not isAllActive or not bossTarget or not bossTarget.Parent then
+                                        connection:Disconnect()
+                                        return
+                                    end
+                                    local updatedCF = getBossHeadCFrame(bossTarget)
+                                    local currentRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                                    if updatedCF and currentRoot then
+                                        currentRoot.CFrame = updatedCF * CFrame.new(0, 3, 3)
+                                    end
+                                end)
+
+                                while isAllActive and bossTarget and bossTarget.Parent and getBossHeadCFrame(bossTarget) do
+                                    task.wait(0.1)
+                                end
+                                connection:Disconnect()
                             else
                                 break
                             end
@@ -2220,7 +2259,6 @@ tab:AddSwitch("Auto Farm Boss", function(state)
     isSingleActive = state
 
     if state then
-        -- Fast Punch Active Loop para sa Single Boss
         task.spawn(function()
             while isSingleActive do
                 pcall(function()
@@ -2254,7 +2292,6 @@ tab:AddSwitch("Auto Farm Boss", function(state)
             end)
         end)
 
-        -- Single Boss Detector Teleport Loop na may task.wait(0.1)
         task.spawn(function()
             while isSingleActive do
                 if selectedBoss == "" then
@@ -2264,15 +2301,32 @@ tab:AddSwitch("Auto Farm Boss", function(state)
 
                 local bossArena = workspace:FindFirstChild("Events") and workspace.Events:FindFirstChild("BossArena")
                 local bossFolder = bossArena and bossArena:FindFirstChild(selectedBoss)
-                local bossTarget = bossFolder and bossFolder:FindFirstChild("Boss")
+                local bossTarget = bossFolder and (bossFolder:FindFirstChild("Boss") or bossFolder)
                 
                 while isSingleActive do
-                    bossTarget = bossFolder and bossFolder:FindFirstChild("Boss")
-                    local targetCF = getBossCFrame(bossTarget)
+                    bossTarget = bossFolder and (bossFolder:FindFirstChild("Boss") or bossFolder)
+                    local targetCF = getBossHeadCFrame(bossTarget)
                     local rootPart = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
                     
                     if targetCF and rootPart then
-                        rootPart.CFrame = targetCF * CFrame.new(0, 3, 3)
+                        -- Continuous frame-by-frame teleport loop locked directly onto the head
+                        local connection
+                        connection = RunService.Heartbeat:Connect(function()
+                            if not isSingleActive or not bossTarget or not bossTarget.Parent then
+                                connection:Disconnect()
+                                return
+                            end
+                            local updatedCF = getBossHeadCFrame(bossTarget)
+                            local currentRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                            if updatedCF and currentRoot then
+                                currentRoot.CFrame = updatedCF * CFrame.new(0, 3, 3)
+                            end
+                        end)
+
+                        while isSingleActive and bossTarget and bossTarget.Parent and getBossHeadCFrame(bossTarget) do
+                            task.wait(0.1)
+                        end
+                        connection:Disconnect()
                     else
                         break
                     end
