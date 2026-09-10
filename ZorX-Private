@@ -15,6 +15,7 @@ local window = library:AddWindow("ZorX-Private | Welcome, " .. localPlayer.Displ
 })
 
 local AutoFarm = window:AddTab("Farm")
+AutoFarm:Show()
 
 local Players = game:GetService("Players")
 local VirtualUser = game:GetService("VirtualUser")
@@ -2117,7 +2118,6 @@ autoEvolveFolder:AddSwitch("Auto Evolve All Auras", function(state)
 end)
 
 local tab = window:AddTab("Bosses")
-tab:Show()
 
 local LocalPlayer = game:GetService("Players").LocalPlayer
 local bossNames = {"Boss1", "Boss2", "Boss3", "Boss4", "Boss5", "BossRainbow"}
