@@ -2117,7 +2117,6 @@ autoEvolveFolder:AddSwitch("Auto Evolve All Auras", function(state)
 end)
 
 local tab = window:AddTab("Bosses")
-tab:Show()
 
 local LocalPlayer = game:GetService("Players").LocalPlayer
 local RunService = game:GetService("RunService")
