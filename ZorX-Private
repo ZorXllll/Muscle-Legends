@@ -598,13 +598,13 @@ local function autoEquipItem(toolName, globalVar, customEventName, customEventAr
                 local character = LocalPlayer.Character
                 local backpack = LocalPlayer.Backpack
                 
-                if character then
+                if character and character:FindFirstChildOfClass("Humanoid") then
                     local humanoid = character:FindFirstChildOfClass("Humanoid")
                     local equipped = character:FindFirstChild(toolName)
                     
                     if not equipped and backpack then
                         local tool = backpack:FindFirstChild(toolName)
-                        if tool and humanoid then
+                        if tool then
                             humanoid:EquipTool(tool)
                         end
                     end
@@ -691,8 +691,8 @@ AutoEquipTools:AddSwitch("Fast Tools", function(Value)
             task.wait(0.01)
             if not _G.FastTools then break end
             
-            local character = game.Players.LocalPlayer.Character
-            local backpack = game.Players.LocalPlayer.Backpack
+            local character = LocalPlayer.Character
+            local backpack = LocalPlayer.Backpack
             
             for _, toolInfo in ipairs(toolSettings) do
                 local toolName = toolInfo[1]
@@ -712,7 +712,6 @@ AutoEquipTools:AddSwitch("Fast Tools", function(Value)
                         if equippedTool:FindFirstChild(propName) then
                             equippedTool[propName].Value = propVal
                         end
-                        
                         equippedTool:Activate()
                     end
                 end
