@@ -197,6 +197,52 @@ AutoFarm:AddSwitch("Hide All UI Frames", function(state)
     end
 end)
 
+local autoLiftEnabled = false
+local players = game:GetService("Players")
+local replicatedStorage = game:GetService("ReplicatedStorage")
+local localPlayer = players.LocalPlayer
+
+local function triggerLift()
+    pcall(function()
+        local character = localPlayer.Character
+        if not character then return end
+        
+        local tool = character:FindFirstChildOfClass("Tool")
+        if tool then
+            tool:Activate()
+        end
+        
+        local vim = game:GetService("VirtualInputManager")
+        if vim then
+            vim:SendMouseButtonEvent(0, 0, 0, true, game, 0)
+            task.wait(0.05)
+            vim:SendMouseButtonEvent(0, 0, 0, false, game, 0)
+        end
+        
+        if replicatedStorage:FindFirstChild("rEvents") then
+            for _, remote in ipairs(replicatedStorage.rEvents:GetChildren()) do
+                if remote:IsA("RemoteEvent") then
+                    local name = remote.Name:lower()
+                    if name:find("lift") or name:find("train") or name:find("weight") or name:find("click") or name:find("stat") then
+                        remote:FireServer()
+                    end
+                end
+            end
+        end
+    end)
+end
+
+AutoFarm:AddSwitch("Auto Lift", function(bool)
+    autoLiftEnabled = bool
+    
+    task.spawn(function()
+        while autoLiftEnabled do
+            triggerLift()
+            task.wait(0.01)
+        end
+    end)
+end)
+
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local RunService = game:GetService("RunService")
