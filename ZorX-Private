@@ -363,7 +363,7 @@ toggleButton.InputChanged:Connect(function(input)
 end)
 
 -- Elerium v2 AddSwitch (shows/hides the floating UI)
-autoFarmTab:AddSwitch("Auto Lift", function(bool)
+AutoFarm:AddSwitch("Auto Lift", function(bool)
     floatingFrame.Visible = bool
     
     if not bool and autoLiftEnabled then
