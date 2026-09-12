@@ -197,15 +197,81 @@ AutoFarm:AddSwitch("Hide All UI Frames", function(state)
     end
 end)
 
-local autoLiftEnabled = false
 local players = game:GetService("Players")
 local replicatedStorage = game:GetService("ReplicatedStorage")
+local coreGui = game:GetService("CoreGui")
+local tweenService = game:GetService("TweenService")
 local localPlayer = players.LocalPlayer
+
+-- Remove existing GUI if it already exists to prevent duplicates
+if coreGui:FindFirstChild("AutoLiftCustomGui") then
+    coreGui.AutoLiftCustomGui:Destroy()
+end
+
+-- Create ScreenGUI
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "AutoLiftCustomGui"
+screenGui.Parent = coreGui
+screenGui.ResetOnSpawn = false
+
+-- Create Main Floating Frame Container
+local floatingFrame = Instance.new("Frame")
+floatingFrame.Name = "FloatingFrame"
+floatingFrame.Parent = screenGui
+floatingFrame.BackgroundColor3 = Color3.fromRGB(24, 24, 28)
+floatingFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+floatingFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
+floatingFrame.Size = UDim2.new(0, 150, 0, 40)
+floatingFrame.Visible = false
+floatingFrame.Active = true
+
+-- Add Rounded Corners
+local uiCorner = Instance.new("UICorner")
+uiCorner.CornerRadius = UDim.new(0, 10)
+uiCorner.Parent = floatingFrame
+
+-- Add Subtle Outer Stroke/Border
+local uiStroke = Instance.new("UIStroke")
+uiStroke.Color = Color3.fromRGB(50, 50, 58)
+uiStroke.Thickness = 1.5
+uiStroke.Parent = floatingFrame
+
+-- Add Modern Gradient Accent
+local uiGradient = Instance.new("UIGradient")
+uiGradient.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(40, 40, 48)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(20, 20, 24))
+})
+uiGradient.Rotation = 45
+uiGradient.Parent = floatingFrame
+
+-- Create Interactive Toggle Button
+local toggleButton = Instance.new("TextButton")
+toggleButton.Name = "ToggleButton"
+toggleButton.Parent = floatingFrame
+toggleButton.BackgroundTransparency = 1
+toggleButton.Size = UDim2.new(1, 0, 1, 0)
+toggleButton.Font = Enum.Font.GothamBold
+toggleButton.Text = "Auto Lift: OFF"
+toggleButton.TextColor3 = Color3.fromRGB(180, 180, 190)
+toggleButton.TextSize = 13
+toggleButton.Active = true
+
+-- Add Smooth Hover Effects
+floatingFrame.MouseEnter:Connect(function()
+    tweenService:Create(uiStroke, TweenInfo.new(0.2), {Color = Color3.fromRGB(90, 90, 105)}):Play()
+end)
+
+floatingFrame.MouseLeave:Connect(function()
+    tweenService:Create(uiStroke, TweenInfo.new(0.2), {Color = Color3.fromRGB(50, 50, 58)}):Play()
+end)
+
+local autoLiftEnabled = false
 
 local function triggerLift()
     pcall(function()
         local character = localPlayer.Character
-        if not character then return end
+        if not character or not character:FindFirstChild("Humanoid") or character.Humanoid.Health <= 0 then return end
         
         local tool = character:FindFirstChildOfClass("Tool")
         if tool then
@@ -232,15 +298,80 @@ local function triggerLift()
     end)
 end
 
-AutoFarm:AddSwitch("Auto Lift", function(bool)
-    autoLiftEnabled = bool
+-- Toggle Function
+local function toggleAutoLift()
+    autoLiftEnabled = not autoLiftEnabled
     
-    task.spawn(function()
-        while autoLiftEnabled do
-            triggerLift()
-            task.wait(0.01)
+    if autoLiftEnabled then
+        toggleButton.Text = "Auto Lift: ON"
+        tweenService:Create(toggleButton, TweenInfo.new(0.2), {TextColor3 = Color3.fromRGB(100, 255, 120)}):Play()
+        tweenService:Create(uiStroke, TweenInfo.new(0.2), {Color = Color3.fromRGB(60, 180, 80)}):Play()
+        
+        task.spawn(function()
+            while autoLiftEnabled do
+                triggerLift()
+                task.wait(0.01)
+            end
+        end)
+    else
+        toggleButton.Text = "Auto Lift: OFF"
+        tweenService:Create(toggleButton, TweenInfo.new(0.2), {TextColor3 = Color3.fromRGB(180, 180, 190)}):Play()
+        tweenService:Create(uiStroke, TweenInfo.new(0.2), {Color = Color3.fromRGB(50, 50, 58)}):Play()
+    end
+end
+
+-- Stable Click & Drag System
+local dragging = false
+local dragStart, startPos
+local dragDistance = 0
+local pressTime = 0
+
+toggleButton.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStart = input.Position
+        startPos = floatingFrame.Position
+        dragDistance = 0
+        pressTime = tick()
+        
+        local conn
+        conn = input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+                conn:Disconnect()
+                if dragDistance < 12 and (tick() - pressTime < 0.5) then
+                    toggleAutoLift()
+                end
+            end
+        end)
+    end
+end)
+
+toggleButton.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+        local delta = input.Position - dragStart
+        dragDistance = math.abs(delta.X) + math.abs(delta.Y)
+        if dragging then
+            floatingFrame.Position = UDim2.new(
+                startPos.X.Scale, 
+                startPos.X.Offset + delta.X, 
+                startPos.Y.Scale, 
+                startPos.Y.Offset + delta.Y
+            )
         end
-    end)
+    end
+end)
+
+-- Elerium v2 AddSwitch (shows/hides the floating UI)
+autoFarmTab:AddSwitch("Auto Lift", function(bool)
+    floatingFrame.Visible = bool
+    
+    if not bool and autoLiftEnabled then
+        autoLiftEnabled = false
+        toggleButton.Text = "Auto Lift: OFF"
+        toggleButton.TextColor3 = Color3.fromRGB(180, 180, 190)
+        uiStroke.Color = Color3.fromRGB(50, 50, 58)
+    end
 end)
 
 local Players = game:GetService("Players")
