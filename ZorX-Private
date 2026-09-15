@@ -2231,7 +2231,7 @@ tab:AddSwitch("Auto Farm All Boss", function(state)
                                     local updatedCF = getBossHeadCFrame(bossTarget)
                                     local currentRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
                                     if updatedCF and currentRoot then
-                                        currentRoot.CFrame = updatedCF * CFrame.new(0, 3, 3)
+                                        currentRoot.CFrame = updatedCF * CFrame.new(0, 3, 6)
                                     end
                                 end)
 
@@ -2327,7 +2327,7 @@ tab:AddSwitch("Auto Farm Boss", function(state)
                             local updatedCF = getBossHeadCFrame(bossTarget)
                             local currentRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
                             if updatedCF and currentRoot then
-                                currentRoot.CFrame = updatedCF * CFrame.new(0, 3, 3)
+                                currentRoot.CFrame = updatedCF * CFrame.new(0, 3, 6)
                             end
                         end)
 
