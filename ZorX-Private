@@ -2348,13 +2348,17 @@ end)
 tab:AddLabel("AUTO FARM BOSSES V2")
 
 -- SERVICES
-local Players, RunService, Workspace, TweenService, UserInputService, SoundService = 
-    game:GetService("Players"), game:GetService("RunService"), game:GetService("Workspace"), 
-    game:GetService("TweenService"), game:GetService("UserInputService"), game:GetService("SoundService")
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local SoundService = game:GetService("SoundService")
+
 local Player = Players.LocalPlayer
 
 local AutoBoss, AutoChest = false, false
-local AttackDistance, DodgeDistance, FloatHeight = 25, 202, 15 -- Updated default dodge distance to 202
+local AttackDistance, DodgeDistance, FloatHeight = 25, 202, 15
 local Dodging, Connections, LastSequence, ToggleSetters = false, {}, {}, {}
 local BossRenderConn
 
@@ -2379,44 +2383,65 @@ ToggleSetters["AutoChest"] = AutoChestSwitch
 pcall(function()
     tab:AddTextBox("MELEE DISTANCE", function(text)
         local num = tonumber(text)
-        if num then
-            AttackDistance = num
-        end
+        if num then AttackDistance = num end
     end)
 
     tab:AddTextBox("STOMP DODGE DISTANCE", function(text)
         local num = tonumber(text)
-        if num then
-            DodgeDistance = num
-        end
+        if num then DodgeDistance = num end
     end)
 end)
 
-local function GetArena() return Workspace:FindFirstChild("Events") and Workspace.Events:FindFirstChild("BossArena") end
+local function GetArena() 
+    local events = Workspace:FindFirstChild("Events")
+    return events and events:FindFirstChild("BossArena") 
+end
 
 local function getBoss(Number)
     local Arena = GetArena()
     if not Arena then return nil end
     local Boss = Arena:FindFirstChild("Boss" .. Number)
     if Boss then return Boss end
-    for _, obj in ipairs(Arena:GetDescendants()) do if obj.Name == ("Boss" .. Number) and obj:IsA("Model") then return obj end end
+    
+    for _, obj in ipairs(Arena:GetDescendants()) do 
+        if obj.Name == ("Boss" .. Number) and obj:IsA("Model") then 
+            return obj 
+        end 
+    end
     return nil
 end
 
 local function HasActiveBoss()
-    return getBoss(1) ~= nil or getBoss(2) ~= nil or getBoss(3) ~= nil or getBoss(4) ~= nil or getBoss(5) ~= nil
+    for i = 1, 5 do
+        if getBoss(i) ~= nil then return true end
+    end
+    return false
 end
 
 local function TryClaimPrompt(prompt)
     if not AutoChest or not prompt:IsA("ProximityPrompt") then return end
-    local act, obj = string.lower(prompt.ActionText or ""), string.lower(prompt.ObjectText or "")
-    if act:find("claim") or obj:find("chest") then pcall(function() fireproximityprompt(prompt) end) end
+    local act = string.lower(prompt.ActionText or "")
+    local obj = string.lower(prompt.ObjectText or "")
+    if act:find("claim") or obj:find("chest") then 
+        pcall(function() fireproximityprompt(prompt) end) 
+    end
 end
 
-Workspace.DescendantAdded:Connect(function(obj) if obj:IsA("ProximityPrompt") then task.wait(0.1) TryClaimPrompt(obj) end end)
+Workspace.DescendantAdded:Connect(function(obj) 
+    if obj:IsA("ProximityPrompt") then 
+        task.wait(0.1) 
+        TryClaimPrompt(obj) 
+    end 
+end)
+
 task.spawn(function()
     while task.wait(0.5) do
-        if AutoChest then for _, obj in ipairs(Workspace:GetDescendants()) do TryClaimPrompt(obj) end end
+        if AutoChest then 
+            local descendants = Workspace:GetDescendants()
+            for i = 1, #descendants do 
+                TryClaimPrompt(descendants[i]) 
+            end 
+        end
     end
 end)
 
@@ -2424,10 +2449,14 @@ task.spawn(function()
     while task.wait(0.1) do
         if AutoBoss and HasActiveBoss() then
             local char = Player.Character
-            local hum, backpack = char and char:FindFirstChildOfClass("Humanoid"), Player:FindFirstChild("Backpack")
+            local hum = char and char:FindFirstChildOfClass("Humanoid")
+            local backpack = Player:FindFirstChild("Backpack")
             if char and hum and hum.Health > 0 then
                 local punch = char:FindFirstChild("Punch") or (backpack and backpack:FindFirstChild("Punch"))
-                if punch then if punch.Parent ~= char then hum:EquipTool(punch) end punch:Activate() end
+                if punch then 
+                    if punch.Parent ~= char then hum:EquipTool(punch) end 
+                    punch:Activate() 
+                end
             end
         end
     end
@@ -2442,7 +2471,8 @@ local function executeFloatingDodge(boss)
     local root = char and char:FindFirstChild("HumanoidRootPart")
     if not root then return end
 
-    local AttackCF, ImpactTime = boss:GetAttribute("BossAttackCFrame"), boss:GetAttribute("BossAttackImpactTime")
+    local AttackCF = boss:GetAttribute("BossAttackCFrame")
+    local ImpactTime = boss:GetAttribute("BossAttackImpactTime")
     Dodging = true
 
     local baseCF = (typeof(AttackCF) == "CFrame") and AttackCF or root.CFrame
@@ -2472,12 +2502,17 @@ end
 
 local function setupBossEvents(boss, number)
     if not boss then return end
-    if Connections[number] then for _, conn in ipairs(Connections[number]) do conn:Disconnect() end end
+    if Connections[number] then 
+        for _, conn in ipairs(Connections[number]) do 
+            conn:Disconnect() 
+        end 
+    end
     Connections[number], LastSequence[number] = {}, nil
 
     local function checkAttack()
         if not AutoBoss then return end
-        local Sequence, Kind = boss:GetAttribute("BossAttackSequence"), boss:GetAttribute("BossAttackKind")
+        local Sequence = boss:GetAttribute("BossAttackSequence")
+        local Kind = boss:GetAttribute("BossAttackKind")
         if Sequence == nil or tostring(Kind) ~= "Stomp" or LastSequence[number] == Sequence then return end
         LastSequence[number] = Sequence
         task.spawn(function() executeFloatingDodge(boss) end)
@@ -2489,22 +2524,37 @@ local function setupBossEvents(boss, number)
     end))
 end
 
-local function setupAllBosses() for num = 1, 5 do local boss = getBoss(num) if boss then setupBossEvents(boss, num) end end end
+local function setupAllBosses() 
+    for num = 1, 5 do 
+        local boss = getBoss(num) 
+        if boss then setupBossEvents(boss, num) end 
+    end 
+end
 setupAllBosses()
 
 if BossRenderConn then BossRenderConn:Disconnect() end
 BossRenderConn = RunService.RenderStepped:Connect(function()
     if not AutoBoss or Dodging then return end
-    local activeBoss = getBoss(1) or getBoss(2) or getBoss(3) or getBoss(4) or getBoss(5)
+    local activeBoss = nil
+    for i = 1, 5 do
+        activeBoss = getBoss(i)
+        if activeBoss then break end
+    end
+    
     if activeBoss then
         local char = Player.Character
         local root = char and char:FindFirstChild("HumanoidRootPart")
         local bossRoot = activeBoss:FindFirstChild("HumanoidRootPart") or activeBoss.PrimaryPart
-        if root and bossRoot then root.CFrame = bossRoot.CFrame * CFrame.new(0, 0, AttackDistance) end
+        if root and bossRoot then 
+            root.CFrame = bossRoot.CFrame * CFrame.new(0, 0, AttackDistance) 
+        end
     end
 end)
 
-Player.CharacterAdded:Connect(function() task.wait(1) if AutoBoss then setupAllBosses() end end)
+Player.CharacterAdded:Connect(function() 
+    task.wait(1) 
+    if AutoBoss then setupAllBosses() end 
+end)
 
 local teleport = window:AddTab("Teleport")
 
