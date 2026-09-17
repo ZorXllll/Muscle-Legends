@@ -2127,6 +2127,7 @@ autoEvolveFolder:AddSwitch("Auto Evolve All Auras", function(state)
 end)
 
 local tab = window:AddTab("Bosses")
+tab:Show()
 
 local LocalPlayer = game:GetService("Players").LocalPlayer
 local RunService = game:GetService("RunService")
@@ -2168,7 +2169,7 @@ end
 
 -- 1. AUTO FARM ALL BOSSES
 local isAllActive = false
-tab:AddSwitch("Auto Farm All Boss", function(state)
+local allBossSwitch = tab:AddSwitch("AUTO FARM ALL BOSS", function(state)
     isAllActive = state
 
     if state then
@@ -2221,7 +2222,6 @@ tab:AddSwitch("Auto Farm All Boss", function(state)
                             local rootPart = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
                             
                             if targetCF and rootPart then
-                                -- Continuous frame-by-frame teleport loop locked directly onto the head
                                 local connection
                                 connection = RunService.Heartbeat:Connect(function()
                                     if not isAllActive or not bossTarget or not bossTarget.Parent then
@@ -2263,7 +2263,7 @@ for _, name in ipairs(bossNames) do
     bossDropdown:Add(name)
 end
 
-tab:AddSwitch("Auto Farm Boss", function(state)
+local singleBossSwitch = tab:AddSwitch("AUTO FARM BOSS", function(state)
     isSingleActive = state
 
     if state then
@@ -2317,7 +2317,6 @@ tab:AddSwitch("Auto Farm Boss", function(state)
                     local rootPart = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
                     
                     if targetCF and rootPart then
-                        -- Continuous frame-by-frame teleport loop locked directly onto the head
                         local connection
                         connection = RunService.Heartbeat:Connect(function()
                             if not isSingleActive or not bossTarget or not bossTarget.Parent then
@@ -2346,7 +2345,7 @@ tab:AddSwitch("Auto Farm Boss", function(state)
     end
 end)
 
-tab:AddLabel("Auto Farm Bosses V2")
+tab:AddLabel("AUTO FARM BOSSES V2")
 
 -- SERVICES
 local Players, RunService, Workspace, TweenService, UserInputService, SoundService = 
@@ -2355,7 +2354,7 @@ local Players, RunService, Workspace, TweenService, UserInputService, SoundServi
 local Player = Players.LocalPlayer
 
 local AutoBoss, AutoChest = false, false
-local AttackDistance, DodgeDistance, FloatHeight = 3, 180, 15
+local AttackDistance, DodgeDistance, FloatHeight = 25, 202, 15 -- Updated default dodge distance to 202
 local Dodging, Connections, LastSequence, ToggleSetters = false, {}, {}, {}
 local BossRenderConn
 
@@ -2364,8 +2363,7 @@ alertSound.Name = "BossSpawnAlertSound"
 alertSound.SoundId = "rbxassetid://9114223178"
 alertSound.Volume = 2.5
 
--- TOGGLES (Tinanggal na ang Auto Punch toggle)
-local AutoBossSwitch = tab:AddSwitch("AUTO BOSS COMBAT", function(bool)
+local AutoBossSwitch = tab:AddSwitch("AUTO FARM ALL BOSS", function(bool)
     AutoBoss = bool
 end)
 AutoBossSwitch:Set(AutoBoss)
@@ -2377,16 +2375,23 @@ end)
 AutoChestSwitch:Set(AutoChest)
 ToggleSetters["AutoChest"] = AutoChestSwitch
 
--- SLIDERS
-tab:AddSlider("MELEE DISTANCE", function(val)
-    AttackDistance = val
+-- TEXT BOXES FOR CUSTOM DISTANCES
+pcall(function()
+    tab:AddTextBox("MELEE DISTANCE", function(text)
+        local num = tonumber(text)
+        if num then
+            AttackDistance = num
+        end
+    end)
+
+    tab:AddTextBox("STOMP DODGE DISTANCE", function(text)
+        local num = tonumber(text)
+        if num then
+            DodgeDistance = num
+        end
+    end)
 end)
 
-tab:AddSlider("STOMP DODGE DISTANCE", function(val)
-    DodgeDistance = val
-end)
-
--- ARENA & BOSS CHECKER FUNCTIONS
 local function GetArena() return Workspace:FindFirstChild("Events") and Workspace.Events:FindFirstChild("BossArena") end
 
 local function getBoss(Number)
@@ -2402,7 +2407,6 @@ local function HasActiveBoss()
     return getBoss(1) ~= nil or getBoss(2) ~= nil or getBoss(3) ~= nil or getBoss(4) ~= nil or getBoss(5) ~= nil
 end
 
--- CORE ACTIONS (AUTO CLAIM CHEST)
 local function TryClaimPrompt(prompt)
     if not AutoChest or not prompt:IsA("ProximityPrompt") then return end
     local act, obj = string.lower(prompt.ActionText or ""), string.lower(prompt.ObjectText or "")
@@ -2416,7 +2420,6 @@ task.spawn(function()
     end
 end)
 
--- AUTO PUNCH (Naka-link na ngayon sa AutoBoss at gagana lang kapag may active boss)
 task.spawn(function()
     while task.wait(0.1) do
         if AutoBoss and HasActiveBoss() then
@@ -2430,7 +2433,6 @@ task.spawn(function()
     end
 end)
 
--- SMOOTH DODGE LOGIC
 local function executeFloatingDodge(boss)
     if not AutoBoss or Dodging then return end
     task.wait(1.5)
