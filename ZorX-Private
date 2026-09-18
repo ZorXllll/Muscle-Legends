@@ -1467,73 +1467,84 @@ end, "Teletransporte continuo al Rey MÃºsculo")
 
 rebirthsFolder:AddLabel("Pack Farm")
 
--- 🔁 Fast Rebirths
-rebirthsFolder:AddSwitch("Fast Rebirths", function(state)
-    getgenv().AutoFarming = state
-    if state then
+local fastRebirth = false
+
+local Fastrebs = rebirthsFolder:AddSwitch("Fast Rebirth", function(p52)
+    fastRebirth = p52
+    if fastRebirth then
         task.spawn(function()
-            local a = ReplicatedStorage
-            local c = LocalPlayer
-            local function equipPetByName(name)
-                local folderPets = c:FindFirstChild("petsFolder")
-                if not folderPets then return end
-                for _, folder in pairs(folderPets:GetChildren()) do
-                    if folder:IsA("Folder") then
-                        for _, pet in pairs(folder:GetChildren()) do
-                            if pet.Name == name then
-                                a.rEvents.equipPetEvent:FireServer("equipPet", pet)
+            local _ReplicatedStorage = game:GetService('ReplicatedStorage')
+            local _LocalPlayer4 = game:GetService('Players').LocalPlayer
+            
+            local function unequipAll()
+                local _petsFolder = _LocalPlayer4:FindFirstChild('petsFolder')
+                if _petsFolder then
+                    for _, folder in ipairs(_petsFolder:GetChildren()) do
+                        if folder:IsA('Folder') then
+                            for _, pet in ipairs(folder:GetChildren()) do
+                                pcall(function()
+                                    _ReplicatedStorage.rEvents.equipPetEvent:FireServer('unequipPet', pet)
+                                end)
                             end
                         end
                     end
                 end
             end
-            local function unequipAllPets()
-                local f = c:FindFirstChild("petsFolder")
-                if not f then return end
-                for _, folder in pairs(f:GetChildren()) do
-                    if folder:IsA("Folder") then
-                        for _, pet in pairs(folder:GetChildren()) do
-                            a.rEvents.equipPetEvent:FireServer("unequipPet", pet)
+            
+            local function equipPets(...)
+                local targetPets = { ... }
+                local _petsFolder = _LocalPlayer4:FindFirstChild('petsFolder')
+                if not _petsFolder then return end
+                
+                for _, targetName in ipairs(targetPets) do
+                    for _, folder in ipairs(_petsFolder:GetChildren()) do
+                        if folder:IsA('Folder') then
+                            for _, pet in ipairs(folder:GetChildren()) do
+                                if string.find(pet.Name:lower(), targetName:lower(), 1, true) then
+                                    _ReplicatedStorage.rEvents.equipPetEvent:FireServer('equipPet', pet)
+                                    task.wait(0.05)
+                                end
+                            end
                         end
                     end
                 end
+            end
+            
+            while fastRebirth do
+                local v81 = 10000 + 5000 * _LocalPlayer4.leaderstats.Rebirths.Value
+                if _LocalPlayer4:FindFirstChild('ultimatesFolder') and _LocalPlayer4.ultimatesFolder:FindFirstChild('Golden Rebirth') then
+                    local _Value = _LocalPlayer4.ultimatesFolder['Golden Rebirth'].Value
+                    v81 = math.floor(v81 * (1 - _Value * 0.1))
+                end
+                
+                -- Bawasan ng 50% ang target strength requirement para sa Tribal Overlord
+                v81 = math.floor(v81 * 0.5)
+                
+                -- Equip grinding pets
+                unequipAll()
                 task.wait(0.1)
-            end
-            local function getGoldenRebirthCount()
-                local g = c:FindFirstChild("ultimatesFolder")
-                if g and g:FindFirstChild("Golden Rebirth") then
-                    return g["Golden Rebirth"].Value
+                equipPets('Swift Samurai', 'Rare Boss Pet')
+                
+                -- Mag-ipon ng strength hanggang sa discounted target (200M)
+                while fastRebirth and _LocalPlayer4.leaderstats.Strength.Value < v81 do
+                    task.wait(0.1)
                 end
-                return 0
-            end
-            local function getStrengthRequiredForRebirth()
-                local rebirths = c.leaderstats.Rebirths.Value
-                local baseStrength = 10000 + (5000 * rebirths)
-                local golden = getGoldenRebirthCount()
-                if golden >= 1 and golden <= 5 then
-                    baseStrength = baseStrength * (1 - golden * 0.1)
-                end
-                return math.floor(baseStrength)
-            end
-            while getgenv().AutoFarming do
-                local requiredStrength = getStrengthRequiredForRebirth()
-                unequipAllPets()
-                equipPetByName("Swift Samurai")
-                while c.leaderstats.Strength.Value < requiredStrength and getgenv().AutoFarming do
-                    for _ = 1, 10 do
-                        c.muscleEvent:FireServer("rep")
-                    end
-                    task.wait()
-                end
-                if getgenv().AutoFarming then
-                    unequipAllPets()
-                    equipPetByName("Tribal Overlord")
-                    local oldRebirths = c.leaderstats.Rebirths.Value
-                    repeat
-                        a.rEvents.rebirthRemote:InvokeServer("rebirthRequest")
-                        task.wait(0.1)
-                    until c.leaderstats.Rebirths.Value > oldRebirths or not getgenv().AutoFarming
-                end
+                
+                if not fastRebirth then break end
+                
+                -- Instant swap sa Tribal Overlord
+                unequipAll()
+                task.wait(0.1)
+                equipPets('Tribal Overlord')
+                task.wait(0.15)
+                
+                -- Rebirth Loop
+                local _Value2 = _LocalPlayer4.leaderstats.Rebirths.Value
+                repeat
+                    _ReplicatedStorage.rEvents.rebirthRemote:InvokeServer('rebirthRequest')
+                    task.wait(0.05)
+                until _Value2 < _LocalPlayer4.leaderstats.Rebirths.Value or not fastRebirth
+                
                 task.wait()
             end
         end)
