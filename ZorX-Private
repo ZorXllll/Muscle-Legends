@@ -17,14 +17,15 @@ local window = library:AddWindow("ZorX-Private | Welcome, " .. localPlayer.Displ
 local AutoFarm = window:AddTab("Farm")
 AutoFarm:Show()
 
-AutoFarm:AddButton("Auto Lift", function()
-    local success, err = pcall(function()
-        loadstring(game:HttpGet("https://pastebin.com/raw/Pck9ZYDp"))()
-    end)
-    
-    if not success then
-        warn("Failed to execute loadstring: " .. tostring(err))
-    end
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+
+-- This is the only thing that makes Auto Lift work
+LocalPlayer:SetAttribute("AutoLiftEnabled", true) -- ON
+LocalPlayer:SetAttribute("AutoLiftEnabled", false) -- OFF
+
+tab:AddSwitch("Free Auto Lift", function(state)
+    LocalPlayer:SetAttribute("AutoLiftEnabled", state)
 end)
 
 local Players = game:GetService("Players")
