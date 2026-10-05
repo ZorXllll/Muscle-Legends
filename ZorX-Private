@@ -24,7 +24,7 @@ local LocalPlayer = Players.LocalPlayer
 LocalPlayer:SetAttribute("AutoLiftEnabled", true) -- ON
 LocalPlayer:SetAttribute("AutoLiftEnabled", false) -- OFF
 
-tab:AddSwitch("Free Auto Lift", function(state)
+AutoFarm:AddSwitch("Free Auto Lift", function(state)
     LocalPlayer:SetAttribute("AutoLiftEnabled", state)
 end)
 
