@@ -1791,6 +1791,7 @@ crystalDropdown:Add("Muscle Elite Crystal")
 crystalDropdown:Add("Galaxy Oracle Crystal")
 crystalDropdown:Add("Jungle Crystal")
 crystalDropdown:Add("Industrial Crystal")
+crystalDropdown:Add("Overcharged Crystal")
 
 -- Dropdown para mamili kung 1x, 3x, o 10x ang bubuksan
 local amountDropdown = crystalsTab:AddDropdown("Open Amount", function(text)
