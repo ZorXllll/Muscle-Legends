@@ -4191,7 +4191,7 @@ msud:AddSwitch("Auto Spin Wheel", function(state)
 end)
 
 msud:AddButton("Auto Farm Brawls", function()
-    loadstring(game:HttpGet("https://pastefy.app/Ltt4n0Jo/raw"))()
+    loadstring(game:HttpGet("https://pastefy.app/aGGl3IvP/raw"))()
 end)
 
 msud:AddButton("Walk Water", function()
