@@ -4145,148 +4145,6 @@ msud:AddSwitch("Auto Join Brawl", function(State)
     end
 end)
 
--- Services & Local Player Setup
-local players = game:GetService("Players")
-local replicatedStorage = game:GetService("ReplicatedStorage")
-local localPlayer = players.LocalPlayer
-
--- State Table Initializations
-_G.v7 = _G.v7 or { running = true }
-local v7 = _G.v7
-
-v7.brawl = v7.brawl or {
-    autoKill = false,
-    autoReset = false,
-    attackMode = "Punch",
-}
-
--- Config / Helper Stubs (replace/ensure these exist in your main script)
-local function f1(name, val) end
-local function f2(name, default) return default end
-local function f3(name) end
-local function f4(name, cb) task.spawn(cb) end
-local function f7() 
-    local char = localPlayer.Character
-    return char and char:FindFirstChild("HumanoidRootPart")
-end
-local function f8()
-    local char = localPlayer.Character
-    return char and char:FindFirstChildOfClass("Humanoid")
-end
-local function f12(target) end
-local function f13() end
-local function f14() end
-local function f16() end
-
-local function f18()
-    local currentMap = localPlayer:FindFirstChild("currentMap")
-    if not currentMap then
-        return false
-    else
-        local lower = tostring(currentMap.Value or ""):lower()
-        return lower:find("brawl", 1, true) ~= nil or lower:find("ring", 1, true) ~= nil
-    end
-end
-
--- Function to equip specified tool
-local function f25(p13)
-    local character = localPlayer.Character
-    local backpack2 = localPlayer:FindFirstChild("Backpack")
-
-    if character and backpack2 then
-        local findFirstChild = backpack2:FindFirstChild(p13) or character:FindFirstChild(p13)
-        local v39 = findFirstChild
-        local humanoid2 = character:FindFirstChildOfClass("Humanoid")
-
-        if findFirstChild then
-            v39 = humanoid2 and not character:FindFirstChild(p13)
-        end
-
-        if v39 then
-            humanoid2:EquipTool(findFirstChild)
-        end
-    end
-end
-
--- Punching function
-local function f26()
-    local muscleEvent3 = localPlayer:FindFirstChild("muscleEvent") or replicatedStorage:FindFirstChild("muscleEvent")
-
-    if muscleEvent3 then
-        f25("Punch")
-
-        pcall(function()
-            muscleEvent3:FireServer("punch", "leftHand")
-            muscleEvent3:FireServer("punch", "rightHand")
-        end)
-    end
-end
-
--- Auto Win Brawl + Auto Punch Loop
-local function f20()
-    f3("brawlWin")
-
-    if not v7.autoWinBrawl then
-        return
-    end
-
-    -- Teleportation Loop
-    f4("brawlWin", function()
-        while v7.running and v7.autoWinBrawl do
-            pcall(function()
-                if f18() then
-                    local currentMap2 = localPlayer:FindFirstChild("currentMap")
-                    local value8 = currentMap2 and currentMap2.Value
-                    local v25 = f7()
-                    local v26 = f8()
-
-                    if v25 and v26 and v26.Health > 0 then
-                        for _, value9 in ipairs(players:GetPlayers()) do
-                            if not v7.autoWinBrawl then break end
-
-                            if value9 ~= localPlayer and value9.Character then
-                                local humanoidRootPart2 = value9.Character:FindFirstChild("HumanoidRootPart")
-                                local humanoid = value9.Character:FindFirstChildWhichIsA("Humanoid")
-
-                                if humanoidRootPart2 and humanoid and humanoid.Health > 0 then
-                                    local currentMap3 = value9:FindFirstChild("currentMap")
-
-                                    if (currentMap3 and currentMap3.Value) == value8 then
-                                        v25.CFrame = humanoidRootPart2.CFrame * CFrame.new(0, 0, 3)
-                                        v25.AssemblyLinearVelocity = Vector3.zero
-                                        v25.AssemblyAngularVelocity = Vector3.zero
-
-                                        f12(humanoidRootPart2)
-                                    end
-                                end
-                            end
-                        end
-                    end
-                end
-            end)
-
-            task.wait(0.01)
-        end
-    end)
-
-    -- Dedicated Auto-Punching Loop
-    task.spawn(function()
-        while v7.running and v7.autoWinBrawl do
-            if f18() then
-                f26() -- Automatically punches players
-            end
-            task.wait(0.1)
-        end
-    end)
-end
-
--- Auto Win Brawl Toggle
-msud:AddSwitch("Auto Win Brawl (Legacy TP)", function(value37)
-    v7.autoWinBrawl = value37 == true
-    f1("AutoWinBrawl", value37 == true)
-    f20()
-end)
-
 local autoClaimEnabled = false
 local autoFortuneEnabled = false
 
@@ -4330,6 +4188,10 @@ msud:AddSwitch("Auto Spin Wheel", function(state)
             end
         end)
     end
+end)
+
+msud:AddButton("Auto Farm Brawls", function()
+    loadstring(game:HttpGet("https://pastefy.app/Ltt4n0Jo/raw"))()
 end)
 
 msud:AddButton("Walk Water", function()
