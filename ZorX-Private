@@ -2052,8 +2052,135 @@ autoEvolveFolder:AddSwitch("Auto Evolve All Auras", function(state)
     end
 end)
 
+local Tab = window:AddTab("Auto Race")
+
+local Players = game:GetService("Players")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local RunService = game:GetService("RunService")
+local player = Players.LocalPlayer
+
+local isRunning = false
+local botThread = nil
+
+local function getCharacter()
+    return player.Character or player.CharacterAdded:Wait()
+end
+
+local function getHumanoidRootPart()
+    local char = getCharacter()
+    return char:WaitForChild("HumanoidRootPart")
+end
+
+local function teleportTo(position)
+    local hrp = getHumanoidRootPart()
+    hrp.CFrame = CFrame.new(position)
+end
+
+local function waitCancelable(seconds)
+    local elapsed = 0
+    while elapsed < seconds do
+        if not isRunning then return false end
+        task.wait(0.02)
+        elapsed = elapsed + 0.02
+    end
+    return true
+end
+
+-- ============================================================
+-- FARE TIKLAMASI
+-- ============================================================
+local function simulateClick()
+    local viewportSize = workspace.CurrentCamera.ViewportSize
+    local centerX = math.floor(viewportSize.X / 2)
+    local centerY = math.floor(viewportSize.Y / 2)
+
+    pcall(function()
+        VirtualInputManager:SendMouseButtonEvent(centerX, centerY, 0, true, game, 1)
+    end)
+    task.wait(0.01)
+    pcall(function()
+        VirtualInputManager:SendMouseButtonEvent(centerX, centerY, 0, false, game, 1)
+    end)
+end
+
+local function spamClickFor(duration, minDelay, maxDelay)
+    local elapsed = 0
+    while elapsed < duration do
+        if not isRunning then return false end
+        simulateClick()
+
+        local delay = minDelay + math.random() * (maxDelay - minDelay)
+        if elapsed + delay > duration then delay = duration - elapsed end
+
+        local waited = 0
+        while waited < delay do
+            if not isRunning then return false end
+            local step = math.min(0.02, delay - waited)
+            task.wait(step)
+            waited = waited + step
+        end
+        elapsed = elapsed + delay
+    end
+    return true
+end
+
+-- ============================================================
+-- ANA BOT DÖNGÜSÜ
+-- ============================================================
+local function startBot()
+    botThread = task.spawn(function()
+        while isRunning do
+            -- Aşama 1
+            if not isRunning then break end
+            teleportTo(Vector3.new(-12875.3, 6.4, -4157.5))
+            if not waitCancelable(9) then break end
+
+            -- Aşama 2
+            if not isRunning then break end
+            teleportTo(Vector3.new(-13373.0, 12.3, -4144.4))
+            if not waitCancelable(12) then break end
+
+            -- Aşama 3 (Mor Alan)
+            if not isRunning then break end
+            teleportTo(Vector3.new(-13803.8, 6.4, -4143.2))
+            if not waitCancelable(17) then break end
+            if not spamClickFor(7, 0.06, 0.07) then break end
+
+            -- Aşama 4 (Kırmızı Alan)
+            if not isRunning then break end
+            teleportTo(Vector3.new(-13962.5, 6.4, -4143.1))
+            task.wait(0.15)
+            if not spamClickFor(7, 0.02, 0.03) then break end
+
+            -- Aşama 5
+            if not isRunning then break end
+            teleportTo(Vector3.new(-14550.8, 6.4, -4199.1))
+            if not waitCancelable(3.5) then break end
+
+            if not waitCancelable(0.2) then break end
+        end
+        if not isRunning then botThread = nil end
+    end)
+end
+
+local function stopBot()
+    isRunning = false
+    if botThread then
+        task.cancel(botThread)
+        botThread = nil
+    end
+end
+
+Tab:AddSwitch("Auto Race StrongBloxian", function(bool)
+    isRunning = bool
+    if isRunning then
+        startBot()
+    else
+      stopBot()
+    end
+end)
+
 local tab = window:AddTab("Bosses")
-tab:Show()
 
 local LocalPlayer = game:GetService("Players").LocalPlayer
 local RunService = game:GetService("RunService")
