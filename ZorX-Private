@@ -4103,7 +4103,7 @@ msud:AddSwitch("Auto Spin Wheel", function(state)
 end)
 
 msud:AddButton("Auto Race StrongBloxian", function()
-    loadstring(game:HttpGet("https://pastefy.app/jY9IXP5X/raw"))()
+    loadstring(game:HttpGet("https://pastefy.app/3VAIaY5G/raw"))()
 end)
 
 msud:AddButton("Auto Farm Brawls", function()
