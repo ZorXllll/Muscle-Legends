@@ -12,6 +12,18 @@ local window = library:AddWindow("ZorX-Private | Welcome, " .. localPlayer.Displ
     main_color = Color3.fromRGB(128, 128, 128),
     min_size = Vector2.new(500, 400),
     can_resize = true
+
+    floating_button = {
+        enabled    = true,
+        color      = Color3.fromRGB(0, 0, 0),
+        hover      = Color3.fromRGB(0, 0, 0),
+        icon       = "https://www.roblox.com/Thumbs/Asset.ashx?width=420&height=420&assetId=131276898160614",
+        icon_color = Color3.fromRGB(255, 255, 255),
+        size       = 42,
+        corner     = 6,
+        position   = UDim2.new(0, 20, 0, 80),
+        draggable  = true,
+    },
 })
 
 local AutoFarm = window:AddTab("Farm")
