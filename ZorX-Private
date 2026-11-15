@@ -2287,6 +2287,10 @@ tab:AddButton("AUTO FARM BOSS", function()
     loadstring(game:HttpGet("https://pastebin.com/raw/6X870S86"))()
 end)
 
+tab:AddButton("Auto Farm Alien Boss", function()
+    loadstring(game:HttpGet("https://pastefy.app/OwPAbExR/raw"))()
+end)
+
 local teleport = window:AddTab("Teleport")
 
 teleport:AddButton("Spawn", function()
